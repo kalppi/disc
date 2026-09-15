@@ -14,8 +14,8 @@ public partial class CameraController : Node3D
     [ExportGroup("Flight Chase Camera")]
     [Export] public float FlightDistance { get; set; } = 4.0f;
     [Export] public float FlightHeight { get; set; } = 1.6f;
-    [Export] public float FlightFollowSpeed { get; set; } = 8.0f;
-    [Export] public float FlightRotationSpeed { get; set; } = 6.0f;
+    [Export] public float FlightFollowSpeed { get; set; } = 12.0f;
+    [Export] public float FlightRotationSpeed { get; set; } = 8.0f;
 
     private Vector3 _currentCameraPos;
     private Vector3 _currentLookTarget;
@@ -58,14 +58,20 @@ public partial class CameraController : Node3D
             _initialized = true;
         }
 
-        if (Disc.IsFlying)
-        {
-            UpdateFlightCamera(dt);
-        }
-        else
+        if (!Disc.IsFlying)
         {
             UpdateAimCamera(dt);
         }
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        if (Camera == null || Disc == null || !Disc.IsFlying)
+        {
+            return;
+        }
+
+        UpdateFlightCamera((float)delta);
     }
 
     private void UpdateAimCamera(float dt)

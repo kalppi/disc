@@ -14,8 +14,8 @@ public partial class DiscFlightController : RigidBody3D
     [Export] public float LateralForceMultiplier { get; set; } = 1.4f;
 
     [ExportGroup("Stability (Turn & Fade)")]
-    [Export] public float TurnStrength { get; set; } = 18.0f;       // Degrees per second roll to the right at max speed
-    [Export] public float FadeStrength { get; set; } = 28.0f;       // Degrees per second roll to the left at low speed
+    [Export] public float TurnStrength { get; set; } = 18.0f;       // Degrees per second roll right at high speed
+    [Export] public float FadeStrength { get; set; } = 28.0f;       // Degrees per second roll left at low speed
     [Export] public float TurnSpeedThreshold { get; set; } = 18.0f; // Speed above which high-speed turn occurs
     [Export] public float FadeSpeedThreshold { get; set; } = 16.0f; // Speed below which low-speed fade occurs
     [Export] public float MaxBankAngle { get; set; } = 55.0f;
@@ -40,6 +40,11 @@ public partial class DiscFlightController : RigidBody3D
         _startPosition = GlobalPosition;
         _startRotation = GlobalTransform.Basis.GetRotationQuaternion();
 
+        // Lock rigid body physics rotation to prevent physics engine tumbling/jitter
+        AxisLockAngularX = true;
+        AxisLockAngularY = true;
+        AxisLockAngularZ = true;
+
         ContactMonitor = true;
         MaxContactsReported = 4;
         BodyEntered += OnBodyEntered;
@@ -59,18 +64,19 @@ public partial class DiscFlightController : RigidBody3D
         if (_hasTouchedGround)
         {
             _groundContactTimer += dt;
-            // Allow brief ground interaction (slides/skips) before settling
-            if (_groundContactTimer > 0.8f || LinearVelocity.Length() < 1.0f)
+            if (_groundContactTimer > 0.8f || LinearVelocity.Length() < 0.6f)
             {
                 EndFlight();
                 return;
             }
         }
+        else
+        {
+            ApplyArcadeFlight(dt);
+        }
 
         UpdateFlightProgress();
-        ApplyArcadeFlight(dt);
-        UpdateVisualOrientation();
-        CheckGroundProximity();
+        UpdateVisualOrientation(dt);
     }
 
     public void Throw(ThrowParameters parameters)
@@ -97,7 +103,7 @@ public partial class DiscFlightController : RigidBody3D
         GravityScale = FlightGravityScale;
         IsFlying = true;
 
-        UpdateVisualOrientation();
+        UpdateVisualOrientation(0.016f);
     }
 
     public void ResetPosition()
@@ -141,18 +147,15 @@ public partial class DiscFlightController : RigidBody3D
         }
 
         Vector3 forward = horizVel.Normalized();
-        // Right vector (forward x Up in 3D right-handed coordinates)
         Vector3 right = forward.Cross(Vector3.Up).Normalized();
 
         // 1. Aerodynamic Bank Angle Adjustment (Turn & Fade)
-        // High speed causes high-speed turn (roll right / positive angle)
         if (currentSpeed > TurnSpeedThreshold)
         {
             float turnFactor = (currentSpeed - TurnSpeedThreshold) / (MaxThrowSpeed - TurnSpeedThreshold + 0.01f);
             CurrentBankAngle += TurnStrength * turnFactor * dt;
         }
 
-        // Low speed causes low-speed fade (roll left / negative angle)
         if (currentSpeed < FadeSpeedThreshold)
         {
             float fadeFactor = 1.0f - (currentSpeed / FadeSpeedThreshold);
@@ -161,18 +164,15 @@ public partial class DiscFlightController : RigidBody3D
 
         CurrentBankAngle = Mathf.Clamp(CurrentBankAngle, -MaxBankAngle, MaxBankAngle);
 
-        // 2. Lateral Force from Bank Angle (Curves the flight path)
-        // Bank angle creates lateral acceleration in the direction of the roll tilt
+        // 2. Lateral Force from Bank Angle
         float bankRad = Mathf.DegToRad(CurrentBankAngle);
         Vector3 lateralAcc = right * Mathf.Sin(bankRad) * currentSpeed * LateralForceMultiplier;
         LinearVelocity += lateralAcc * dt;
 
         // 3. Lift & Glide
-        // Glide counteracts gravity smoothly based on horizontal airspeed
         float targetLift = currentSpeed * GlideStrength * 0.05f;
         float currentVerticalVel = LinearVelocity.Y;
 
-        // If descending, apply buoyant lift
         if (currentVerticalVel < 1.0f)
         {
             float liftForce = Mathf.Min(targetLift, (1.0f - currentVerticalVel) * 3.0f);
@@ -201,7 +201,7 @@ public partial class DiscFlightController : RigidBody3D
         FlightProgress = 1.0f - Mathf.Clamp(currentSpeed / _initialSpeed, 0.0f, 1.0f);
     }
 
-    private void UpdateVisualOrientation()
+    private void UpdateVisualOrientation(float dt)
     {
         if (DiscVisual == null)
         {
@@ -215,41 +215,26 @@ public partial class DiscFlightController : RigidBody3D
         }
 
         Vector3 forward = horizVel.Normalized();
+        Vector3 right = forward.Cross(Vector3.Up).Normalized();
+        Vector3 up = right.Cross(forward).Normalized();
 
-        // Orient visual towards forward flight direction
-        DiscVisual.LookAt(
-            DiscVisual.GlobalPosition + forward,
-            Vector3.Up
-        );
+        // Construct stable forward basis
+        Basis orientationBasis = new(right, up, -forward);
 
-        // Roll disc visual along the forward axis to match simulated bank angle
-        DiscVisual.RotateObjectLocal(
-            Vector3.Forward,
-            Mathf.DegToRad(CurrentBankAngle)
-        );
+        // Apply roll (bank angle) around local forward (-Z) axis
+        orientationBasis = orientationBasis.Rotated(orientationBasis.Z, Mathf.DegToRad(CurrentBankAngle));
 
-        // Add slight pitch along flight velocity vector
+        // Apply slight pitch along flight velocity vector
         float verticalPitch = Mathf.Clamp(LinearVelocity.Y / (horizVel.Length() + 0.1f), -0.5f, 0.5f);
-        DiscVisual.RotateObjectLocal(
-            Vector3.Right,
-            verticalPitch * 0.5f
-        );
-    }
+        orientationBasis = orientationBasis.Rotated(orientationBasis.X, verticalPitch * 0.4f);
 
-    private void CheckGroundProximity()
-    {
-        float groundY = GetGroundHeightAt(GlobalPosition);
-        if (GlobalPosition.Y <= groundY + 0.08f)
-        {
-            _hasTouchedGround = true;
-            // Restore standard physics gravity for ground interaction
-            GravityScale = 1.0f;
-        }
+        // Update disc visual globally with stable basis
+        DiscVisual.GlobalBasis = orientationBasis;
     }
 
     private void OnBodyEntered(Node body)
     {
-        if (IsFlying)
+        if (IsFlying && !_hasTouchedGround)
         {
             _hasTouchedGround = true;
             GravityScale = 1.0f;
