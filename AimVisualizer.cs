@@ -12,39 +12,28 @@ public partial class AimVisualizer : Node3D
     [Export] public float ArrowHeadLength { get; set; } = 0.35f;
     [Export] public float ArrowHeadRadius { get; set; } = 0.09f;
 
-    [ExportGroup("Disc Preview Dimensions")]
-    [Export] public float DiscRadius { get; set; } = 0.35f;
-    [Export] public float DiscThickness { get; set; } = 0.035f;
+    [ExportGroup("Aim Guide Dimensions")]
     [Export] public float HorizonGuideWidth { get; set; } = 1.0f;
 
     [ExportGroup("Colors")]
     [Export] public Color LowPowerColor { get; set; } = new(0.2f, 0.75f, 1.0f, 0.95f);
     [Export] public Color MidPowerColor { get; set; } = new(0.95f, 0.85f, 0.2f, 0.95f);
     [Export] public Color HighPowerColor { get; set; } = new(1.0f, 0.25f, 0.1f, 0.98f);
-    [Export] public Color DiscPreviewColor { get; set; } = new(0.9f, 0.95f, 1.0f, 0.75f);
-    [Export] public Color DiscRimColor { get; set; } = new(0.4f, 0.7f, 1.0f, 0.9f);
     [Export] public Color HorizonGuideColor { get; set; } = new(1.0f, 1.0f, 1.0f, 0.35f);
     [Export] public Color PivotMarkerColor { get; set; } = new(0.3f, 0.85f, 1.0f, 0.8f);
 
     private Node3D _aimRoot = null!;
-    private Node3D _discVisualRoot = null!;
     private Node3D _lineRoot = null!;
 
     private MeshInstance3D _pivotMarker = null!;
     private MeshInstance3D _lineShaft = null!;
     private MeshInstance3D _arrowHead = null!;
-    private MeshInstance3D _discBody = null!;
-    private MeshInstance3D _discRim = null!;
-    private MeshInstance3D _discForwardArrow = null!;
     private MeshInstance3D _horizonGuide = null!;
 
     private CylinderMesh _shaftMesh = null!;
     private CylinderMesh _arrowHeadMesh = null!;
 
     private StandardMaterial3D _lineMaterial = null!;
-    private StandardMaterial3D _discBodyMaterial = null!;
-    private StandardMaterial3D _discRimMaterial = null!;
-    private StandardMaterial3D _discArrowMaterial = null!;
     private StandardMaterial3D _horizonMaterial = null!;
     private StandardMaterial3D _pivotMaterial = null!;
 
@@ -87,31 +76,6 @@ public partial class AimVisualizer : Node3D
             AlbedoColor = LowPowerColor,
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             CullMode = BaseMaterial3D.CullModeEnum.Disabled
-        };
-
-        _discBodyMaterial = new StandardMaterial3D
-        {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel,
-            AlbedoColor = DiscPreviewColor,
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            Roughness = 0.3f,
-            Metallic = 0.1f,
-            EmissionEnabled = true,
-            Emission = DiscPreviewColor * 0.2f
-        };
-
-        _discRimMaterial = new StandardMaterial3D
-        {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            AlbedoColor = DiscRimColor,
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha
-        };
-
-        _discArrowMaterial = new StandardMaterial3D
-        {
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            AlbedoColor = new Color(1.0f, 1.0f, 1.0f, 0.9f),
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha
         };
 
         _horizonMaterial = new StandardMaterial3D
@@ -160,63 +124,11 @@ public partial class AimVisualizer : Node3D
         };
         _aimRoot.AddChild(_horizonGuide);
 
-        // 2b. Disc visual root (rolls around local launch forward axis with ReleaseAngle)
-        _discVisualRoot = new Node3D { Name = "DiscVisualRoot" };
-        _aimRoot.AddChild(_discVisualRoot);
-
-        BuildDiscPreviewMesh();
-
-        // 2c. Direction line root (extends along local -Z / forward vector)
+        // 2b. Direction line root (extends along local -Z / forward vector)
         _lineRoot = new Node3D { Name = "LineRoot" };
         _aimRoot.AddChild(_lineRoot);
 
         BuildDirectionLineMesh();
-    }
-
-    private void BuildDiscPreviewMesh()
-    {
-        // Flat cylinder representing disc body
-        _discBody = new MeshInstance3D
-        {
-            Name = "DiscBody",
-            Mesh = new CylinderMesh
-            {
-                TopRadius = DiscRadius,
-                BottomRadius = DiscRadius,
-                Height = DiscThickness,
-                RadialSegments = 32
-            },
-            MaterialOverride = _discBodyMaterial
-        };
-        _discVisualRoot.AddChild(_discBody);
-
-        // Outer rim / halo ring for clear edge silhouette
-        _discRim = new MeshInstance3D
-        {
-            Name = "DiscRim",
-            Mesh = new TorusMesh
-            {
-                InnerRadius = DiscRadius - 0.025f,
-                OuterRadius = DiscRadius + 0.01f,
-                Rings = 32,
-                RingSegments = 16
-            },
-            MaterialOverride = _discRimMaterial
-        };
-        _discVisualRoot.AddChild(_discRim);
-
-        // Direction pointer on disc top (forward notch/arrow)
-        _discForwardArrow = new MeshInstance3D
-        {
-            Name = "DiscForwardIndicator",
-            Mesh = new BoxMesh
-            {
-                Size = new Vector3(0.04f, DiscThickness + 0.005f, DiscRadius * 0.7f)
-            },
-            Position = new Vector3(0.0f, 0.0f, -DiscRadius * 0.4f),
-            MaterialOverride = _discArrowMaterial
-        };
-        _discVisualRoot.AddChild(_discForwardArrow);
     }
 
     private void BuildDirectionLineMesh()
@@ -267,11 +179,15 @@ public partial class AimVisualizer : Node3D
         aimTransform = aimTransform.RotatedLocal(Vector3.Right, Mathf.DegToRad(ThrowController.Pitch));
         _aimRoot.Transform = aimTransform;
 
-        // Roll disc visual root around local Forward (-Z) by ReleaseAngle (Hyzer / Anhyzer)
-        _discVisualRoot.Transform = Transform3D.Identity.Rotated(
-            Vector3.Forward,
-            Mathf.DegToRad(ThrowController.ReleaseAngle)
-        );
+        // Orient the actual DiscVisual node to match aim heading, pitch, and Hyzer/Anhyzer release angle
+        if (Disc?.DiscVisual != null)
+        {
+            Transform3D discTransform = aimTransform.RotatedLocal(
+                Vector3.Forward,
+                Mathf.DegToRad(ThrowController.ReleaseAngle)
+            );
+            Disc.DiscVisual.Transform = discTransform;
+        }
     }
 
     private void UpdatePowerVisuals()
@@ -300,7 +216,6 @@ public partial class AimVisualizer : Node3D
         }
 
         _lineMaterial.AlbedoColor = powerColor;
-        _discRimMaterial.AlbedoColor = powerColor;
         _pivotMaterial.AlbedoColor = powerColor;
     }
 }

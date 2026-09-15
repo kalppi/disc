@@ -6,6 +6,7 @@ public partial class ThrowController : Node
 
     [ExportGroup("Aim Sensitivity")]
     [Export] public float AimSensitivity { get; set; } = 0.15f;
+    [Export] public float AimWhileChargingSensitivity { get; set; } = 0.15f;
     [Export] public float PowerSensitivity { get; set; } = 0.004f;
     [Export] public float TiltStep { get; set; } = 5.0f;
 
@@ -46,6 +47,14 @@ public partial class ThrowController : Node
         {
             if (keyEvent.Keycode == Key.Escape)
             {
+                if (_isHoldingLmb)
+                {
+                    // Cancel current charge without throwing
+                    _isHoldingLmb = false;
+                    Power = DefaultPower;
+                    return;
+                }
+
                 Input.MouseMode = Input.MouseMode == Input.MouseModeEnum.Captured
                     ? Input.MouseModeEnum.Visible
                     : Input.MouseModeEnum.Captured;
@@ -107,11 +116,19 @@ public partial class ThrowController : Node
 
     private void HandleMouseButton(InputEventMouseButton mouseButton)
     {
-        // 1. Right Mouse Button: Free-Look Orbit
+        // 1. Right Mouse Button: Free-Look Orbit or Cancel Throw Charge
         if (mouseButton.ButtonIndex == MouseButton.Right)
         {
             if (mouseButton.Pressed)
             {
+                if (_isHoldingLmb)
+                {
+                    // RMB click while charging cancels the throw safely
+                    _isHoldingLmb = false;
+                    Power = DefaultPower;
+                    return;
+                }
+
                 _isHoldingRmb = true;
                 FreeLookStarted?.Invoke();
             }
@@ -153,15 +170,19 @@ public partial class ThrowController : Node
             return;
         }
 
-        // B. If holding LMB: Pull back power (aim heading stays firmly locked)
+        // B. If holding LMB: Charge power with vertical pull, simultaneously aim heading with horizontal motion!
         if (_isHoldingLmb)
         {
+            // Horizontal mouse movement aims heading while charging
+            Yaw -= mouseMotion.Relative.X * AimWhileChargingSensitivity;
+
+            // Vertical mouse movement pulls back power
             Power += mouseMotion.Relative.Y * PowerSensitivity;
             Power = Mathf.Clamp(Power, 0.05f, 1.0f);
             return;
         }
 
-        // C. Default (No buttons): Mouse directly rotates Aim direction & Camera
+        // C. Default (Idle Stance): Mouse directly rotates Aim direction & Camera (Yaw & Pitch)
         Yaw -= mouseMotion.Relative.X * AimSensitivity;
         Pitch += mouseMotion.Relative.Y * AimSensitivity;
         Pitch = Mathf.Clamp(Pitch, MinPitch, MaxPitch);

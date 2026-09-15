@@ -109,6 +109,11 @@ public partial class DiscFlightController : RigidBody3D
         MaxContactsReported = 4;
         BodyEntered += OnBodyEntered;
 
+        if (DiscVisual != null)
+        {
+            DiscVisual.Visible = true;
+        }
+
         BuildGroundIndicator();
         SetupNewTurnHover(_startPosition);
     }
@@ -237,6 +242,7 @@ public partial class DiscFlightController : RigidBody3D
         if (DiscVisual != null)
         {
             DiscVisual.Transform = Transform3D.Identity;
+            DiscVisual.Visible = true;
         }
 
         SetFlightPhase(FlightPhase.Ready);

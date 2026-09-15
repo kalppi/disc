@@ -6,7 +6,7 @@
 [ext_resource type="Script" uid="uid://4ijnewi7ys6w" path="res://AimVisualizer.cs" id="4_aimvis"]
 [ext_resource type="Script" uid="uid://bdu4b8iygsp4m" path="res://CameraController.cs" id="5_camctl"]
 [ext_resource type="PackedScene" uid="uid://ccevtcol4iudv" path="res://cube.tscn" id="6_i5arm"]
-[ext_resource type="Script" path="res://FlightPhaseUI.cs" id="7_phaseui"]
+[ext_resource type="Script" uid="uid://bd07dj1j7omta" path="res://FlightPhaseUI.cs" id="7_phaseui"]
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_oyi63"]
 size = Vector2(200, 200)
@@ -54,9 +54,9 @@ Disc = NodePath("../DiscFlightController")
 [node name="DiscFlightController" type="RigidBody3D" parent="." unique_id=1387924686 node_paths=PackedStringArray("DiscVisual")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 0)
 script = ExtResource("2_r3fl7")
-DiscVisual = NodePath("MeshInstance3D")
+DiscVisual = NodePath("DiscVisual")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="DiscFlightController" unique_id=152003752]
+[node name="DiscVisual" type="MeshInstance3D" parent="DiscFlightController" unique_id=152003752]
 mesh = SubResource("CylinderMesh_disc")
 surface_material_override/0 = SubResource("StandardMaterial3D_disc")
 
