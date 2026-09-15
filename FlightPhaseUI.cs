@@ -37,10 +37,11 @@ public partial class FlightPhaseUI : CanvasLayer
     // Status Footer
     private Label _livePhaseBadge = null!;
     private Label _powerLabel = null!;
+    private Label _pitchLabel = null!;
     private Label _angleLabel = null!;
     private Label _airtimeLabel = null!;
 
-    private const float TotalBarWidth = 320.0f;
+    private const float TotalBarWidth = 340.0f;
     private const float BarHeight = 22.0f;
 
     public override void _Ready()
@@ -173,12 +174,12 @@ public partial class FlightPhaseUI : CanvasLayer
         _barContainer.AddChild(_glideSegment);
         _barContainer.AddChild(_fadeSegment);
 
-        // 5. Bottom Row: Live Phase Badge, Power, Angle, Airtime
+        // 5. Bottom Row: Live Phase Badge, Power, Pitch, Angle, Airtime
         var bottomRow = new HBoxContainer
         {
             Alignment = BoxContainer.AlignmentMode.Begin
         };
-        bottomRow.AddThemeConstantOverride("separation", 8);
+        bottomRow.AddThemeConstantOverride("separation", 7);
         vBox.AddChild(bottomRow);
 
         _livePhaseBadge = CreateBadge("READY", new Color(0.2f, 0.9f, 0.4f));
@@ -188,6 +189,11 @@ public partial class FlightPhaseUI : CanvasLayer
         _powerLabel.AddThemeFontSizeOverride("font_size", 10);
         _powerLabel.AddThemeColorOverride("font_color", new Color(0.85f, 0.88f, 0.92f));
         bottomRow.AddChild(_powerLabel);
+
+        _pitchLabel = new Label { Text = "0° Level" };
+        _pitchLabel.AddThemeFontSizeOverride("font_size", 10);
+        _pitchLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.88f, 0.45f));
+        bottomRow.AddChild(_pitchLabel);
 
         _angleLabel = new Label { Text = "Flat" };
         _angleLabel.AddThemeFontSizeOverride("font_size", 10);
@@ -310,6 +316,25 @@ public partial class FlightPhaseUI : CanvasLayer
         _livePhaseBadge.Text = $" {Disc.CurrentFlightPhase.ToString().ToUpper()} ";
         _powerLabel.Text = $"Pwr: {ThrowController.Power * 100.0f:F0}%";
 
+        // Pitch Readout
+        float pitch = ThrowController.Pitch;
+        if (Mathf.Abs(pitch) < 0.5f)
+        {
+            _pitchLabel.Text = "0° Level";
+            _pitchLabel.AddThemeColorOverride("font_color", new Color(0.3f, 0.95f, 0.6f));
+        }
+        else if (pitch > 0.0f)
+        {
+            _pitchLabel.Text = $"+{pitch:F0}° Up";
+            _pitchLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.82f, 0.35f));
+        }
+        else
+        {
+            _pitchLabel.Text = $"{pitch:F0}° Down";
+            _pitchLabel.AddThemeColorOverride("font_color", new Color(0.5f, 0.8f, 1.0f));
+        }
+
+        // Release Roll Angle Readout
         float releaseAngle = ThrowController.ReleaseAngle;
         if (Mathf.Abs(releaseAngle) < 1.0f)
         {

@@ -203,7 +203,10 @@ public partial class DiscFlightController : RigidBody3D
         IsFlying = true;
 
         SetFlightPhase(FlightPhase.Launch);
-        UpdateVisualOrientation(_lastForward, CurrentBankAngle, 0.0f, 0.016f);
+
+        float horizLen = new Vector2(launchDirection.X, launchDirection.Z).Length();
+        float initialPitch = Mathf.Atan2(launchDirection.Y, Mathf.Max(0.01f, horizLen));
+        UpdateVisualOrientation(_lastForward, CurrentBankAngle, initialPitch, 0.016f);
     }
 
     public void ResetPosition()
@@ -744,16 +747,16 @@ public partial class DiscFlightController : RigidBody3D
         }
         Vector3 up = right.Cross(_lastForward).Normalized();
 
-        // 1. Base alignment with travel direction
+        // 1. Base alignment with travel direction (X=right, Y=up, Z=-forward)
         Basis basis = new(right, up, -_lastForward);
 
-        // 2. Bank tilt (roll around travel vector -Z)
-        basis = basis.Rotated(basis.Z, Mathf.DegToRad(bankAngle));
+        // 2. Bank tilt (roll around forward travel vector _lastForward)
+        basis = basis.Rotated(_lastForward, Mathf.DegToRad(bankAngle));
 
-        // 3. Pitch along flight angle (pitch around local right X)
+        // 3. Pitch along flight angle (pitch around local right axis)
         if (Mathf.Abs(pitchAngle) > 0.001f)
         {
-            basis = basis.Rotated(basis.X, pitchAngle);
+            basis = basis.Rotated(right, pitchAngle);
         }
 
         // 4. Spin around disc face normal (local Y axis)
