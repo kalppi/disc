@@ -171,6 +171,12 @@ public partial class CameraController : Node3D
             return;
         }
 
+        // Preserve the camera viewing direction the player rotated to during flight
+        if (ThrowController != null)
+        {
+            ThrowController.SetAim(_flightYaw, _flightPitch);
+        }
+
         Vector3 hoverPos = Disc.GetHoverPositionFor(Disc.GlobalPosition);
         Transform3D targetTransform = GetAimTransform(hoverPos);
 
@@ -200,7 +206,7 @@ public partial class CameraController : Node3D
         _cameraTween = null;
         _isTweeningToAim = false;
 
-        // Initialize flight orbit rotation directly from aim rotation
+        // Initialize flight orbit rotation directly from current aim rotation
         if (ThrowController != null)
         {
             _flightYaw = ThrowController.Yaw;

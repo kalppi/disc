@@ -52,6 +52,10 @@ public partial class DiscFlightController : RigidBody3D
     [Export] public float DiscRadius { get; set; } = 0.35f;
     [Export] public float DiscThickness { get; set; } = 0.04f;
 
+    [ExportGroup("Wall & Obstacle Physics")]
+    [Export] public float WallBounciness { get; set; } = 0.68f;
+    [Export] public float WallFriction { get; set; } = 0.15f;
+
     [ExportGroup("Visual")]
     [Export] public Node3D? DiscVisual { get; set; }
 
@@ -285,6 +289,12 @@ public partial class DiscFlightController : RigidBody3D
 
     private void ProcessAirborne(float dt, float groundSurfaceY)
     {
+        // Check for wall or obstacle obstacle impacts along trajectory
+        if (CheckObstacleCollision(dt))
+        {
+            return;
+        }
+
         if (GlobalPosition.Y <= groundSurfaceY)
         {
             HandleGroundImpact();
@@ -307,6 +317,12 @@ public partial class DiscFlightController : RigidBody3D
     private void ProcessSkipping(float dt, float groundSurfaceY)
     {
         SetFlightPhase(FlightPhase.Ground);
+
+        // Check for wall / obstacle collisions while skipping
+        if (CheckObstacleCollision(dt))
+        {
+            return;
+        }
 
         LinearVelocity += Vector3.Down * 9.8f * BaseFlightGravityScale * 2.5f * dt;
         LinearVelocity *= Mathf.Max(0.0f, 1.0f - BaseAirDrag * dt);
@@ -343,6 +359,12 @@ public partial class DiscFlightController : RigidBody3D
 
         Vector3 forward = horizVel.Normalized();
         Vector3 right = forward.Cross(Vector3.Up).Normalized();
+
+        // Check for obstacle collision along rolling path
+        if (CheckObstacleCollision(dt))
+        {
+            return;
+        }
 
         // Curvature turn: disc curves naturally towards the side it leans on
         float leanFactor = Mathf.Sin(Mathf.DegToRad(CurrentBankAngle));
@@ -393,6 +415,12 @@ public partial class DiscFlightController : RigidBody3D
         Vector3 forward = horizVel.LengthSquared() > 0.001f ? horizVel.Normalized() : _lastForward;
         LinearVelocity = forward * currentSpeed;
 
+        // Check for obstacle collision along slide path
+        if (CheckObstacleCollision(dt))
+        {
+            return;
+        }
+
         // Step position manually while frozen on ground
         GlobalPosition += LinearVelocity * dt;
         GlobalPosition = new Vector3(GlobalPosition.X, groundSurfaceY, GlobalPosition.Z);
@@ -411,6 +439,89 @@ public partial class DiscFlightController : RigidBody3D
         {
             EndFlight();
         }
+    }
+
+    private bool CheckObstacleCollision(float dt)
+    {
+        var spaceState = GetWorld3D()?.DirectSpaceState;
+        if (spaceState == null)
+        {
+            return false;
+        }
+
+        Vector3 moveStep = LinearVelocity * dt;
+        float stepLen = moveStep.Length();
+        if (stepLen < 0.0001f)
+        {
+            return false;
+        }
+
+        // Cast forward to detect walls / trees / obstacles before penetration
+        Vector3 from = GlobalPosition;
+        Vector3 to = from + moveStep + moveStep.Normalized() * (DiscRadius + 0.05f);
+
+        var query = PhysicsRayQueryParameters3D.Create(from, to);
+        query.Exclude = new Godot.Collections.Array<Rid> { GetRid() };
+
+        var result = spaceState.IntersectRay(query);
+        if (result.Count > 0 && result.TryGetValue("normal", out var normalVar))
+        {
+            Vector3 normal = normalVar.AsVector3();
+            // If surface is mostly vertical (wall/obstacle)
+            if (normal.Y < 0.65f)
+            {
+                if (result.TryGetValue("position", out var hitPosVar))
+                {
+                    Vector3 hitPos = hitPosVar.AsVector3();
+                    GlobalPosition = hitPos + normal * (DiscRadius + 0.03f);
+                }
+                HandleWallImpact(normal);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void HandleWallImpact(Vector3 wallNormal)
+    {
+        Vector3 incomingVel = LinearVelocity;
+        float incomingSpeed = incomingVel.Length();
+
+        if (incomingSpeed < 0.1f)
+        {
+            return;
+        }
+
+        wallNormal = wallNormal.Normalized();
+
+        // Standard reflection vector
+        Vector3 reflectedDir = incomingVel.Bounce(wallNormal).Normalized();
+
+        // Arcade bounce restitution & wall drag
+        float restitution = WallBounciness * (0.80f + 0.20f * SurfaceHardness);
+        float reboundSpeed = incomingSpeed * restitution;
+
+        // Apply bounced velocity with slight gravity kick
+        LinearVelocity = reflectedDir * reboundSpeed + Vector3.Down * 0.5f;
+
+        // Deflect bank angle on wall strike
+        CurrentBankAngle = Mathf.Clamp(-CurrentBankAngle * 0.5f, -MaxBankAngle, MaxBankAngle);
+
+        // Update forward direction for orientation
+        Vector3 horizBounce = new(LinearVelocity.X, 0.0f, LinearVelocity.Z);
+        if (horizBounce.LengthSquared() > 0.001f)
+        {
+            _lastForward = horizBounce.Normalized();
+        }
+
+        // Return to airborne flight so the disc continues to fly and drop after bouncing
+        _groundState = GroundState.Airborne;
+        Freeze = false;
+        Sleeping = false;
+        GravityScale = BaseFlightGravityScale * 1.5f;
+
+        UpdateVisualOrientation(_lastForward, CurrentBankAngle, 0.0f, 0.016f);
     }
 
     private void HandleGroundImpact()
@@ -609,12 +720,35 @@ public partial class DiscFlightController : RigidBody3D
 
     private void OnBodyEntered(Node body)
     {
-        if (IsFlying && !_isEndingFlight)
+        if (!IsFlying || _isEndingFlight)
         {
-            if (_groundState == GroundState.Airborne || _groundState == GroundState.Skipping)
+            return;
+        }
+
+        // Check if collision contact was with a wall/obstacle
+        var spaceState = GetWorld3D()?.DirectSpaceState;
+        if (spaceState != null && LinearVelocity.LengthSquared() > 0.01f)
+        {
+            var query = PhysicsRayQueryParameters3D.Create(
+                GlobalPosition - LinearVelocity.Normalized() * 0.2f,
+                GlobalPosition + LinearVelocity.Normalized() * (DiscRadius + 0.2f)
+            );
+            query.Exclude = new Godot.Collections.Array<Rid> { GetRid() };
+            var result = spaceState.IntersectRay(query);
+            if (result.Count > 0 && result.TryGetValue("normal", out var normalVar))
             {
-                HandleGroundImpact();
+                Vector3 normal = normalVar.AsVector3();
+                if (normal.Y < 0.65f)
+                {
+                    HandleWallImpact(normal);
+                    return;
+                }
             }
+        }
+
+        if (_groundState == GroundState.Airborne || _groundState == GroundState.Skipping)
+        {
+            HandleGroundImpact();
         }
     }
 

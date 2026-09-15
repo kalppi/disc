@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://cr6qxi5yhdncm" path="res://DiscThrower.cs" id="3_jka67"]
 [ext_resource type="Script" uid="uid://4ijnewi7ys6w" path="res://AimVisualizer.cs" id="4_aimvis"]
 [ext_resource type="Script" uid="uid://bdu4b8iygsp4m" path="res://CameraController.cs" id="5_camctl"]
+[ext_resource type="PackedScene" uid="uid://ccevtcol4iudv" path="res://cube.tscn" id="6_i5arm"]
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_oyi63"]
 size = Vector2(200, 200)
@@ -14,9 +15,6 @@ albedo_color = Color(0.18, 0.42, 0.22, 1)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_oyi63"]
 size = Vector3(200, 1, 200)
-
-[sub_resource type="BoxMesh" id="BoxMesh_oyi63"]
-size = Vector3(10, 10, 10)
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_disc"]
 top_radius = 0.35
@@ -43,14 +41,6 @@ surface_material_override/0 = SubResource("StandardMaterial3D_rj1ju")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Ground/StaticBody3D" unique_id=105128713]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 shape = SubResource("BoxShape3D_oyi63")
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=1952815622]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.596628, 5.108036, -27.817432)
-mesh = SubResource("BoxMesh_oyi63")
-
-[node name="MeshInstance3D2" type="MeshInstance3D" parent="Ground" unique_id=899874302]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56.13588, 5.108036, -27.817432)
-mesh = SubResource("BoxMesh_oyi63")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1607587959]
 transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 20, 0)
@@ -91,3 +81,9 @@ Disc = NodePath("../DiscFlightController")
 script = ExtResource("4_aimvis")
 ThrowController = NodePath("../ThrowController")
 Disc = NodePath("../DiscFlightController")
+
+[node name="Cube" parent="." unique_id=1185660882 instance=ExtResource("6_i5arm")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.596628, 5.108036, -27.817432)
+
+[node name="Cube2" parent="." unique_id=427968083 instance=ExtResource("6_i5arm")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23.952253, 5.108036, -27.817432)
