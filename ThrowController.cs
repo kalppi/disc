@@ -8,19 +8,21 @@ public partial class ThrowController : Node
     [Export] public float PowerSensitivity { get; set; } = 0.004f;
     [Export] public float ReleaseAngleSensitivity { get; set; } = 0.15f;
 
-    [Export] public float MinPitch { get; set; } = -20.0f;
-    [Export] public float MaxPitch { get; set; } = 60.0f;
+    [Export] public float MinPitch { get; set; } = -80.0f;
+    [Export] public float MaxPitch { get; set; } = 80.0f;
     [Export] public float MaxReleaseAngle { get; set; } = 45.0f;
 
     public float Yaw { get; private set; }
     public float Pitch { get; private set; } = 10.0f;
     public float Power { get; private set; } = 0.5f;
     public float ReleaseAngle { get; private set; }
+    public bool IsFreeCam { get; set; }
 
     public Vector3 Direction => GetDirection();
 
     public event System.Action<ThrowParameters>? ThrowRequested;
     public event System.Action? ResetRequested;
+    public event System.Action<bool>? FreeCamToggled;
 
     private ThrowInputMode _mode = ThrowInputMode.Aiming;
 
@@ -41,6 +43,12 @@ public partial class ThrowController : Node
                 return;
             }
 
+            if (keyEvent.Keycode == Key.C || keyEvent.Keycode == Key.Tab)
+            {
+                ToggleFreeCam();
+                return;
+            }
+
             if (keyEvent.Keycode == Key.R)
             {
                 ResetRequested?.Invoke();
@@ -55,7 +63,8 @@ public partial class ThrowController : Node
                 Input.MouseMode = Input.MouseModeEnum.Captured;
             }
 
-            if (Disc != null && Disc.IsFlying)
+            // In free cam or during flight, don't trigger throw inputs
+            if (IsFreeCam || (Disc != null && Disc.IsFlying))
             {
                 return;
             }
@@ -66,12 +75,36 @@ public partial class ThrowController : Node
 
         if (@event is InputEventMouseMotion mouseMotion)
         {
+            // If in free cam mode, ThrowController does not modify throw aim
+            if (IsFreeCam)
+            {
+                return;
+            }
+
+            // If disc is flying, do not alter pre-throw aim
             if (Disc != null && Disc.IsFlying)
             {
                 return;
             }
 
             HandleMouseMotion(mouseMotion);
+        }
+    }
+
+    public void ToggleFreeCam()
+    {
+        IsFreeCam = !IsFreeCam;
+        _mode = ThrowInputMode.Aiming;
+        FreeCamToggled?.Invoke(IsFreeCam);
+    }
+
+    public void SetFreeCam(bool active)
+    {
+        if (IsFreeCam != active)
+        {
+            IsFreeCam = active;
+            _mode = ThrowInputMode.Aiming;
+            FreeCamToggled?.Invoke(IsFreeCam);
         }
     }
 
@@ -164,16 +197,11 @@ public partial class ThrowController : Node
 
     private Vector3 GetDirection()
     {
-        float yawRadians = Mathf.DegToRad(Yaw);
-        float pitchRadians = Mathf.DegToRad(Pitch);
+        Transform3D transform = Transform3D.Identity;
+        transform = transform.Rotated(Vector3.Up, Mathf.DegToRad(Yaw));
+        transform = transform.RotatedLocal(Vector3.Right, Mathf.DegToRad(Pitch));
 
-        Vector3 direction = new(
-            Mathf.Sin(yawRadians) * Mathf.Cos(pitchRadians),
-            Mathf.Sin(pitchRadians),
-            -Mathf.Cos(yawRadians) * Mathf.Cos(pitchRadians)
-        );
-
-        return direction.Normalized();
+        return -transform.Basis.Z.Normalized();
     }
 
     private void RequestThrow()
