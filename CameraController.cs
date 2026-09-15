@@ -6,11 +6,12 @@ public partial class CameraController : Node3D
     [Export] public ThrowController? ThrowController { get; set; }
     [Export] public DiscFlightController? Disc { get; set; }
 
-    [ExportGroup("Aim Stance Camera")]
+    [ExportGroup("Aim & Orbit Camera")]
     [Export] public float AimDistance { get; set; } = 3.6f;
     [Export] public float AimHeightRatio { get; set; } = 0.32f;
     [Export] public float MinAimDistance { get; set; } = 1.5f;
     [Export] public float MaxAimDistance { get; set; } = 15.0f;
+    [Export] public float OrbitSensitivity { get; set; } = 0.15f;
 
     [ExportGroup("Flight Orbit Camera")]
     [Export] public float FlightDistance { get; set; } = 5.5f;
@@ -24,23 +25,13 @@ public partial class CameraController : Node3D
     [ExportGroup("Zoom Controls")]
     [Export] public float ZoomStep { get; set; } = 0.5f;
 
-    [ExportGroup("Free Movement")]
-    [Export] public float MoveSpeed { get; set; } = 14.0f;
-    [Export] public float FastMoveMultiplier { get; set; } = 2.5f;
-    [Export] public float SlowMoveMultiplier { get; set; } = 0.4f;
-    [Export] public float FreeCamSensitivity { get; set; } = 0.15f;
-    [Export] public float Acceleration { get; set; } = 16.0f;
-
     public bool IsFreeCam { get; private set; }
 
-    private Vector3 _velocity;
     private Vector3 _cameraPosition;
-
-    private float _freeCamYaw;
-    private float _freeCamPitch;
+    private float _orbitYaw;
+    private float _orbitPitch = 10.0f;
     private float _flightYaw;
     private float _flightPitch;
-    private bool _isAttachedToDisc = true;
     private bool _isTweeningToAim;
     private Tween? _cameraTween;
 
@@ -56,6 +47,9 @@ public partial class CameraController : Node3D
             ThrowController.ResetRequested += OnResetRequested;
             ThrowController.FreeCamToggled += OnFreeCamToggled;
             ThrowController.ThrowRequested += OnThrowRequested;
+
+            _orbitYaw = ThrowController.Yaw;
+            _orbitPitch = ThrowController.Pitch;
         }
 
         if (Disc != null)
@@ -98,33 +92,21 @@ public partial class CameraController : Node3D
             }
         }
 
-        if (@event is InputEventKey keyEvent && keyEvent.Pressed)
-        {
-            if (keyEvent.Keycode == Key.F)
-            {
-                if (IsFreeCam && ThrowController != null)
-                {
-                    ThrowController.SetFreeCam(false);
-                }
-                SnapToAimStance();
-                return;
-            }
-        }
-
         if (@event is InputEventMouseMotion mouseMotion)
         {
-            if (IsFreeCam)
-            {
-                _freeCamYaw -= mouseMotion.Relative.X * FreeCamSensitivity;
-                _freeCamPitch -= mouseMotion.Relative.Y * FreeCamSensitivity;
-                _freeCamPitch = Mathf.Clamp(_freeCamPitch, -85.0f, 85.0f);
-            }
-            else if (Disc != null && Disc.IsFlying && !_isTweeningToAim)
+            if (Disc != null && Disc.IsFlying && !_isTweeningToAim)
             {
                 // Orbit around the flying disc in air
                 _flightYaw -= mouseMotion.Relative.X * FlightOrbitSensitivity;
                 _flightPitch -= mouseMotion.Relative.Y * FlightOrbitSensitivity;
                 _flightPitch = Mathf.Clamp(_flightPitch, -30.0f, 65.0f);
+            }
+            else if (IsFreeCam && !_isTweeningToAim)
+            {
+                // In camera look mode: rotate camera around the disc without changing throw aim line
+                _orbitYaw -= mouseMotion.Relative.X * OrbitSensitivity;
+                _orbitPitch += mouseMotion.Relative.Y * OrbitSensitivity;
+                _orbitPitch = Mathf.Clamp(_orbitPitch, -80.0f, 80.0f);
             }
         }
     }
@@ -136,13 +118,7 @@ public partial class CameraController : Node3D
             return;
         }
 
-        float dt = (float)delta;
-
-        if (IsFreeCam)
-        {
-            UpdateFreeCam(dt);
-        }
-        else if (Disc != null && !Disc.IsFlying && !_isTweeningToAim)
+        if (Disc != null && !Disc.IsFlying && !_isTweeningToAim)
         {
             UpdateAimModeCamera();
         }
@@ -150,7 +126,7 @@ public partial class CameraController : Node3D
 
     public override void _PhysicsProcess(double delta)
     {
-        if (Camera == null || Disc == null || IsFreeCam || !Disc.IsFlying || _isTweeningToAim)
+        if (Camera == null || Disc == null || !Disc.IsFlying || _isTweeningToAim)
         {
             return;
         }
@@ -166,19 +142,22 @@ public partial class CameraController : Node3D
 
     private void OnHoverAnimationStarted(float duration)
     {
-        if (Camera == null || Disc == null || IsFreeCam)
+        if (Camera == null || Disc == null)
         {
             return;
         }
 
         // Preserve the camera viewing direction the player rotated to during flight
+        _orbitYaw = _flightYaw;
+        _orbitPitch = _flightPitch;
+
         if (ThrowController != null)
         {
-            ThrowController.SetAim(_flightYaw, _flightPitch);
+            ThrowController.SetAim(_orbitYaw, _orbitPitch);
         }
 
         Vector3 hoverPos = Disc.GetHoverPositionFor(Disc.GlobalPosition);
-        Transform3D targetTransform = GetAimTransform(hoverPos);
+        Transform3D targetTransform = GetOrbitTransform(hoverPos, _orbitYaw, _orbitPitch);
 
         _cameraTween?.Kill();
         _cameraTween = CreateTween();
@@ -192,7 +171,6 @@ public partial class CameraController : Node3D
         _cameraTween.TweenCallback(Callable.From(() =>
         {
             _isTweeningToAim = false;
-            _isAttachedToDisc = true;
             if (Camera != null)
             {
                 _cameraPosition = Camera.GlobalPosition;
@@ -206,11 +184,16 @@ public partial class CameraController : Node3D
         _cameraTween = null;
         _isTweeningToAim = false;
 
-        // Initialize flight orbit rotation directly from current aim rotation
+        // Initialize flight orbit rotation directly from current aim/camera rotation
         if (ThrowController != null)
         {
             _flightYaw = ThrowController.Yaw;
             _flightPitch = ThrowController.Pitch;
+        }
+        else
+        {
+            _flightYaw = _orbitYaw;
+            _flightPitch = _orbitPitch;
         }
 
         if (Camera != null)
@@ -228,69 +211,22 @@ public partial class CameraController : Node3D
         IsFreeCam = active;
         if (IsFreeCam)
         {
-            _isAttachedToDisc = false;
+            // Enter camera rotate mode: keep the exact current yaw and pitch
             if (ThrowController != null)
             {
-                _freeCamYaw = ThrowController.Yaw;
-                _freeCamPitch = ThrowController.Pitch;
-            }
-            if (Camera != null)
-            {
-                _cameraPosition = Camera.GlobalPosition;
+                _orbitYaw = ThrowController.Yaw;
+                _orbitPitch = ThrowController.Pitch;
             }
         }
         else
         {
-            // Returning to Aim mode
+            // Exit camera rotate mode: synchronize throw aim to the new camera direction seamlessly
             if (ThrowController != null)
             {
-                // Synchronize throw aim with the view direction from rotate mode
-                ThrowController.SetAim(_freeCamYaw, _freeCamPitch);
-            }
-
-            if (Disc != null && Camera != null)
-            {
-                Transform3D targetTransform = GetAimTransform(Disc.GlobalPosition);
-                float dist = Camera.GlobalPosition.DistanceTo(targetTransform.Origin);
-
-                if (dist > 0.8f)
-                {
-                    // If player moved away in free cam, smoothly tween back to aim stance
-                    _cameraTween = CreateTween();
-                    _cameraTween.SetProcessMode(Tween.TweenProcessMode.Physics);
-                    _isTweeningToAim = true;
-
-                    _cameraTween.TweenProperty(Camera, "global_transform", targetTransform, 0.35f)
-                        .SetTrans(Tween.TransitionType.Cubic)
-                        .SetEase(Tween.EaseType.InOut);
-
-                    _cameraTween.TweenCallback(Callable.From(() =>
-                    {
-                        _isTweeningToAim = false;
-                        _isAttachedToDisc = true;
-                        _velocity = Vector3.Zero;
-                        if (Camera != null)
-                        {
-                            _cameraPosition = Camera.GlobalPosition;
-                        }
-                    }));
-                }
-                else
-                {
-                    // Seamless re-attachment without jump
-                    _isAttachedToDisc = true;
-                    _velocity = Vector3.Zero;
-                    Camera.GlobalPosition = targetTransform.Origin;
-                    Camera.GlobalBasis = targetTransform.Basis;
-                    _cameraPosition = Camera.GlobalPosition;
-                }
-            }
-            else
-            {
-                _isAttachedToDisc = true;
-                _velocity = Vector3.Zero;
+                ThrowController.SetAim(_orbitYaw, _orbitPitch);
             }
         }
+        // Camera does NOT move position or jump when hitting C!
     }
 
     private void OnResetRequested()
@@ -302,13 +238,15 @@ public partial class CameraController : Node3D
         if (ThrowController != null)
         {
             ThrowController.SetFreeCam(false);
+            _orbitYaw = ThrowController.Yaw;
+            _orbitPitch = ThrowController.Pitch;
         }
         SnapToAimStance();
     }
 
     private void SnapToAimStance()
     {
-        if (Disc == null || ThrowController == null || Camera == null)
+        if (Disc == null || Camera == null)
         {
             return;
         }
@@ -317,51 +255,49 @@ public partial class CameraController : Node3D
         _cameraTween = null;
         _isTweeningToAim = false;
 
-        _isAttachedToDisc = true;
-        _velocity = Vector3.Zero;
+        if (ThrowController != null)
+        {
+            _orbitYaw = ThrowController.Yaw;
+            _orbitPitch = ThrowController.Pitch;
+        }
 
-        Transform3D aimTransform = GetAimTransform(Disc.GlobalPosition);
+        Transform3D aimTransform = GetOrbitTransform(Disc.GlobalPosition, _orbitYaw, _orbitPitch);
         _cameraPosition = aimTransform.Origin;
         Camera.GlobalPosition = _cameraPosition;
         Camera.GlobalBasis = aimTransform.Basis;
     }
 
-    private Transform3D GetAimTransform(Vector3 pivot)
+    private Transform3D GetOrbitTransform(Vector3 pivot, float yaw, float pitch)
     {
-        if (ThrowController == null)
-        {
-            return Camera?.GlobalTransform ?? Transform3D.Identity;
-        }
-
-        Transform3D aimTransform = Transform3D.Identity;
-        aimTransform = aimTransform.Rotated(Vector3.Up, Mathf.DegToRad(ThrowController.Yaw));
-        aimTransform = aimTransform.RotatedLocal(Vector3.Right, Mathf.DegToRad(ThrowController.Pitch));
+        Transform3D transform = Transform3D.Identity;
+        transform = transform.Rotated(Vector3.Up, Mathf.DegToRad(yaw));
+        transform = transform.RotatedLocal(Vector3.Right, Mathf.DegToRad(pitch));
 
         float height = AimDistance * AimHeightRatio;
-        Vector3 cameraOffset = aimTransform.Basis * new Vector3(0.0f, height, AimDistance);
+        Vector3 cameraOffset = transform.Basis * new Vector3(0.0f, height, AimDistance);
         Vector3 targetPos = pivot + cameraOffset;
 
-        return new Transform3D(aimTransform.Basis, targetPos);
+        return new Transform3D(transform.Basis, targetPos);
     }
 
     private void UpdateAimModeCamera()
     {
-        if (Disc == null || ThrowController == null || Camera == null || _isTweeningToAim)
+        if (Disc == null || Camera == null || _isTweeningToAim)
         {
             return;
         }
 
-        if (_isAttachedToDisc)
+        // In aim mode, synchronize orbit yaw/pitch with throw controller
+        if (!IsFreeCam && ThrowController != null)
         {
-            Transform3D aimTransform = GetAimTransform(Disc.GlobalPosition);
-            Camera.GlobalPosition = aimTransform.Origin;
-            Camera.GlobalBasis = aimTransform.Basis;
-            _cameraPosition = Camera.GlobalPosition;
+            _orbitYaw = ThrowController.Yaw;
+            _orbitPitch = ThrowController.Pitch;
         }
-        else
-        {
-            Camera.GlobalPosition = _cameraPosition;
-        }
+
+        Transform3D aimTransform = GetOrbitTransform(Disc.GlobalPosition, _orbitYaw, _orbitPitch);
+        Camera.GlobalPosition = aimTransform.Origin;
+        Camera.GlobalBasis = aimTransform.Basis;
+        _cameraPosition = Camera.GlobalPosition;
     }
 
     private void UpdateFlightOrbitCamera(float dt)
@@ -394,44 +330,5 @@ public partial class CameraController : Node3D
         Quaternion slerpedQuat = currentQuat.Slerp(targetQuat, rotBlend);
 
         Camera.GlobalBasis = new Basis(slerpedQuat);
-    }
-
-    private void UpdateFreeCam(float dt)
-    {
-        // 1. Update Free Cam Rotation
-        Transform3D camTransform = Transform3D.Identity;
-        camTransform = camTransform.Rotated(Vector3.Up, Mathf.DegToRad(_freeCamYaw));
-        camTransform = camTransform.RotatedLocal(Vector3.Right, Mathf.DegToRad(_freeCamPitch));
-        Camera!.GlobalBasis = camTransform.Basis;
-
-        // 2. Update Free Cam Translation (WASD)
-        Vector3 inputDir = Vector3.Zero;
-        if (Input.IsKeyPressed(Key.W)) inputDir -= Camera.GlobalTransform.Basis.Z;
-        if (Input.IsKeyPressed(Key.S)) inputDir += Camera.GlobalTransform.Basis.Z;
-        if (Input.IsKeyPressed(Key.A)) inputDir -= Camera.GlobalTransform.Basis.X;
-        if (Input.IsKeyPressed(Key.D)) inputDir += Camera.GlobalTransform.Basis.X;
-        if (Input.IsKeyPressed(Key.E) || Input.IsKeyPressed(Key.Space)) inputDir += Vector3.Up;
-        if (Input.IsKeyPressed(Key.Q) || Input.IsKeyPressed(Key.C)) inputDir -= Vector3.Up;
-
-        if (inputDir.LengthSquared() > 0.001f)
-        {
-            inputDir = inputDir.Normalized();
-        }
-
-        float speed = MoveSpeed;
-        if (Input.IsKeyPressed(Key.Shift))
-        {
-            speed *= FastMoveMultiplier;
-        }
-        else if (Input.IsKeyPressed(Key.Ctrl))
-        {
-            speed *= SlowMoveMultiplier;
-        }
-
-        Vector3 targetVelocity = inputDir * speed;
-        _velocity = _velocity.Lerp(targetVelocity, Mathf.Clamp(Acceleration * dt, 0.0f, 1.0f));
-
-        _cameraPosition += _velocity * dt;
-        Camera.GlobalPosition = _cameraPosition;
     }
 }
