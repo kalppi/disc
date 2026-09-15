@@ -4,31 +4,40 @@ public partial class ThrowController : Node
 {
     [Export] public DiscFlightController? Disc { get; set; }
 
+    [ExportGroup("Aim Sensitivity")]
     [Export] public float AimSensitivity { get; set; } = 0.15f;
     [Export] public float PowerSensitivity { get; set; } = 0.004f;
-    [Export] public float ReleaseAngleSensitivity { get; set; } = 0.15f;
+    [Export] public float TiltStep { get; set; } = 5.0f;
 
+    [ExportGroup("Limits")]
     [Export] public float MinPitch { get; set; } = -80.0f;
     [Export] public float MaxPitch { get; set; } = 80.0f;
     [Export] public float MaxReleaseAngle { get; set; } = 45.0f;
+    [Export] public float DefaultPower { get; set; } = 0.5f;
 
     public float Yaw { get; private set; }
     public float Pitch { get; private set; } = 10.0f;
     public float Power { get; private set; } = 0.5f;
     public float ReleaseAngle { get; private set; }
-    public bool IsFreeCam { get; set; }
+
+    public bool IsHoldingLmb => _isHoldingLmb;
+    public bool IsHoldingRmb => _isHoldingRmb;
 
     public Vector3 Direction => GetDirection();
 
     public event System.Action<ThrowParameters>? ThrowRequested;
     public event System.Action? ResetRequested;
-    public event System.Action<bool>? FreeCamToggled;
+    public event System.Action? FreeLookStarted;
+    public event System.Action? FreeLookEnded;
+    public event System.Action<Vector2>? FreeLookMotion;
 
-    private ThrowInputMode _mode = ThrowInputMode.Aiming;
+    private bool _isHoldingLmb;
+    private bool _isHoldingRmb;
 
     public override void _Ready()
     {
         Input.MouseMode = Input.MouseModeEnum.Captured;
+        Power = DefaultPower;
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -43,15 +52,22 @@ public partial class ThrowController : Node
                 return;
             }
 
-            if (keyEvent.Keycode == Key.C || keyEvent.Keycode == Key.Tab)
-            {
-                ToggleFreeCam();
-                return;
-            }
-
             if (keyEvent.Keycode == Key.R)
             {
                 ResetRequested?.Invoke();
+                return;
+            }
+
+            // Q & E keys adjust Hyzer/Anhyzer release angle tilt
+            if (keyEvent.Keycode == Key.Q)
+            {
+                ReleaseAngle = Mathf.Clamp(ReleaseAngle - TiltStep, -MaxReleaseAngle, MaxReleaseAngle);
+                return;
+            }
+
+            if (keyEvent.Keycode == Key.E)
+            {
+                ReleaseAngle = Mathf.Clamp(ReleaseAngle + TiltStep, -MaxReleaseAngle, MaxReleaseAngle);
                 return;
             }
         }
@@ -63,8 +79,7 @@ public partial class ThrowController : Node
                 Input.MouseMode = Input.MouseModeEnum.Captured;
             }
 
-            // In free cam or during flight, don't trigger throw inputs
-            if (IsFreeCam || (Disc != null && Disc.IsFlying))
+            if (Disc != null && Disc.IsFlying)
             {
                 return;
             }
@@ -75,13 +90,6 @@ public partial class ThrowController : Node
 
         if (@event is InputEventMouseMotion mouseMotion)
         {
-            // If in free cam mode, ThrowController does not modify throw aim
-            if (IsFreeCam)
-            {
-                return;
-            }
-
-            // If disc is flying, do not alter pre-throw aim
             if (Disc != null && Disc.IsFlying)
             {
                 return;
@@ -97,108 +105,66 @@ public partial class ThrowController : Node
         Pitch = Mathf.Clamp(pitch, MinPitch, MaxPitch);
     }
 
-    public void ToggleFreeCam()
-    {
-        IsFreeCam = !IsFreeCam;
-        _mode = ThrowInputMode.Aiming;
-        FreeCamToggled?.Invoke(IsFreeCam);
-    }
-
-    public void SetFreeCam(bool active)
-    {
-        if (IsFreeCam != active)
-        {
-            IsFreeCam = active;
-            _mode = ThrowInputMode.Aiming;
-            FreeCamToggled?.Invoke(IsFreeCam);
-        }
-    }
-
     private void HandleMouseButton(InputEventMouseButton mouseButton)
     {
-        if (mouseButton.ButtonIndex == MouseButton.Left)
-        {
-            HandleThrowButton(mouseButton);
-            return;
-        }
-
+        // 1. Right Mouse Button: Free-Look Orbit
         if (mouseButton.ButtonIndex == MouseButton.Right)
         {
-            HandleReleaseAngleButton(mouseButton);
-        }
-    }
-
-    private void HandleThrowButton(InputEventMouseButton mouseButton)
-    {
-        if (mouseButton.Pressed && _mode == ThrowInputMode.Aiming)
-        {
-            _mode = ThrowInputMode.SettingPower;
+            if (mouseButton.Pressed)
+            {
+                _isHoldingRmb = true;
+                FreeLookStarted?.Invoke();
+            }
+            else
+            {
+                _isHoldingRmb = false;
+                FreeLookEnded?.Invoke();
+            }
             return;
         }
 
-        if (!mouseButton.Pressed && _mode == ThrowInputMode.SettingPower)
+        // 2. Left Mouse Button: Power Pull-back & Launch
+        if (mouseButton.ButtonIndex == MouseButton.Left)
         {
-            RequestThrow();
-            _mode = ThrowInputMode.Aiming;
-        }
-    }
+            if (_isHoldingRmb)
+            {
+                return;
+            }
 
-    private void HandleReleaseAngleButton(InputEventMouseButton mouseButton)
-    {
-        if (mouseButton.Pressed && _mode == ThrowInputMode.Aiming)
-        {
-            _mode = ThrowInputMode.SettingReleaseAngle;
-            return;
-        }
-
-        if (!mouseButton.Pressed && _mode == ThrowInputMode.SettingReleaseAngle)
-        {
-            _mode = ThrowInputMode.Aiming;
+            if (mouseButton.Pressed)
+            {
+                _isHoldingLmb = true;
+            }
+            else if (_isHoldingLmb)
+            {
+                _isHoldingLmb = false;
+                RequestThrow();
+                Power = DefaultPower;
+            }
         }
     }
 
     private void HandleMouseMotion(InputEventMouseMotion mouseMotion)
     {
-        switch (_mode)
+        // A. If holding RMB: Survey / Free-Look orbit around the hole
+        if (_isHoldingRmb)
         {
-            case ThrowInputMode.Aiming:
-                UpdateAim(mouseMotion.Relative);
-                break;
-
-            case ThrowInputMode.SettingPower:
-                UpdatePower(mouseMotion.Relative);
-                break;
-
-            case ThrowInputMode.SettingReleaseAngle:
-                UpdateReleaseAngle(mouseMotion.Relative);
-                break;
+            FreeLookMotion?.Invoke(mouseMotion.Relative);
+            return;
         }
-    }
 
-    private void UpdateAim(Vector2 mouseDelta)
-    {
-        Yaw -= mouseDelta.X * AimSensitivity;
+        // B. If holding LMB: Pull back power (aim heading stays firmly locked)
+        if (_isHoldingLmb)
+        {
+            Power += mouseMotion.Relative.Y * PowerSensitivity;
+            Power = Mathf.Clamp(Power, 0.05f, 1.0f);
+            return;
+        }
 
-        // Pulling the mouse down aims upward, moving up aims downward
-        Pitch += mouseDelta.Y * AimSensitivity;
+        // C. Default (No buttons): Mouse directly rotates Aim direction & Camera
+        Yaw -= mouseMotion.Relative.X * AimSensitivity;
+        Pitch += mouseMotion.Relative.Y * AimSensitivity;
         Pitch = Mathf.Clamp(Pitch, MinPitch, MaxPitch);
-    }
-
-    private void UpdatePower(Vector2 mouseDelta)
-    {
-        // Pulling downward increases power; moving up decreases power
-        Power += mouseDelta.Y * PowerSensitivity;
-        Power = Mathf.Clamp(Power, 0.0f, 1.0f);
-    }
-
-    private void UpdateReleaseAngle(Vector2 mouseDelta)
-    {
-        ReleaseAngle += mouseDelta.X * ReleaseAngleSensitivity;
-        ReleaseAngle = Mathf.Clamp(
-            ReleaseAngle,
-            -MaxReleaseAngle,
-            MaxReleaseAngle
-        );
     }
 
     private Vector3 GetDirection()
@@ -219,12 +185,5 @@ public partial class ThrowController : Node
         );
 
         ThrowRequested?.Invoke(parameters);
-    }
-
-    private enum ThrowInputMode
-    {
-        Aiming,
-        SettingPower,
-        SettingReleaseAngle
     }
 }
