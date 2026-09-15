@@ -56,6 +56,12 @@ public partial class DiscFlightController : RigidBody3D
     [Export] public float WallBounciness { get; set; } = 0.68f;
     [Export] public float WallFriction { get; set; } = 0.15f;
 
+    [ExportGroup("Ground Indicator & Drop Line")]
+    [Export] public bool ShowGroundIndicator { get; set; } = true;
+    [Export] public Color GroundIndicatorColor { get; set; } = new(0.25f, 0.85f, 1.0f, 0.65f);
+    [Export] public Color GroundShadowColor { get; set; } = new(0.0f, 0.0f, 0.0f, 0.35f);
+    [Export] public float GroundLineRadius { get; set; } = 0.016f;
+
     [ExportGroup("Visual")]
     [Export] public Node3D? DiscVisual { get; set; }
 
@@ -81,6 +87,13 @@ public partial class DiscFlightController : RigidBody3D
     private float _spinRate;
     private Vector3 _lastForward = Vector3.Forward;
 
+    // Ground Drop-Line & Indicator Nodes
+    private Node3D? _groundIndicatorRoot;
+    private MeshInstance3D? _groundLineInstance;
+    private MeshInstance3D? _groundRingInstance;
+    private MeshInstance3D? _groundShadowInstance;
+    private CylinderMesh? _groundLineMesh;
+
     public override void _Ready()
     {
         _startPosition = GlobalPosition;
@@ -95,7 +108,16 @@ public partial class DiscFlightController : RigidBody3D
         MaxContactsReported = 4;
         BodyEntered += OnBodyEntered;
 
+        BuildGroundIndicator();
         SetupNewTurnHover(_startPosition);
+    }
+
+    public override void _Process(double delta)
+    {
+        if (ShowGroundIndicator)
+        {
+            UpdateGroundIndicator((float)delta);
+        }
     }
 
     public override void _PhysicsProcess(double delta)
@@ -289,7 +311,7 @@ public partial class DiscFlightController : RigidBody3D
 
     private void ProcessAirborne(float dt, float groundSurfaceY)
     {
-        // Check for wall or obstacle obstacle impacts along trajectory
+        // Check for wall or obstacle impacts along trajectory
         if (CheckObstacleCollision(dt))
         {
             return;
@@ -842,6 +864,120 @@ public partial class DiscFlightController : RigidBody3D
         }
 
         return 0.0f;
+    }
+
+    private void BuildGroundIndicator()
+    {
+        _groundIndicatorRoot = new Node3D
+        {
+            Name = "GroundIndicatorRoot",
+            TopLevel = true
+        };
+        AddChild(_groundIndicatorRoot);
+
+        // 1. Vertical Drop Line
+        _groundLineMesh = new CylinderMesh
+        {
+            TopRadius = GroundLineRadius,
+            BottomRadius = GroundLineRadius,
+            Height = 1.0f,
+            RadialSegments = 10
+        };
+
+        var lineMat = new StandardMaterial3D
+        {
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = GroundIndicatorColor,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            CullMode = BaseMaterial3D.CullModeEnum.Disabled
+        };
+
+        _groundLineInstance = new MeshInstance3D
+        {
+            Name = "DropLine",
+            Mesh = _groundLineMesh,
+            MaterialOverride = lineMat
+        };
+        _groundIndicatorRoot.AddChild(_groundLineInstance);
+
+        // 2. Ground Ring Projection
+        var ringMesh = new TorusMesh
+        {
+            InnerRadius = DiscRadius * 0.85f,
+            OuterRadius = DiscRadius,
+            Rings = 24,
+            RingSegments = 12
+        };
+
+        var ringMat = new StandardMaterial3D
+        {
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = new Color(GroundIndicatorColor.R, GroundIndicatorColor.G, GroundIndicatorColor.B, 0.85f),
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha
+        };
+
+        _groundRingInstance = new MeshInstance3D
+        {
+            Name = "GroundRing",
+            Mesh = ringMesh,
+            MaterialOverride = ringMat
+        };
+        _groundIndicatorRoot.AddChild(_groundRingInstance);
+
+        // 3. Ground Soft Shadow Disc
+        var shadowMesh = new CylinderMesh
+        {
+            TopRadius = DiscRadius * 0.85f,
+            BottomRadius = DiscRadius * 0.85f,
+            Height = 0.002f,
+            RadialSegments = 24
+        };
+
+        var shadowMat = new StandardMaterial3D
+        {
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = GroundShadowColor,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha
+        };
+
+        _groundShadowInstance = new MeshInstance3D
+        {
+            Name = "GroundShadow",
+            Mesh = shadowMesh,
+            MaterialOverride = shadowMat
+        };
+        _groundIndicatorRoot.AddChild(_groundShadowInstance);
+    }
+
+    private void UpdateGroundIndicator(float dt)
+    {
+        if (_groundIndicatorRoot == null || _groundLineMesh == null || _groundLineInstance == null || _groundRingInstance == null || _groundShadowInstance == null)
+        {
+            return;
+        }
+
+        Vector3 discPos = GlobalPosition;
+        float groundY = GetGroundHeightAt(discPos);
+        float altitude = discPos.Y - (groundY + DiscThickness * 0.5f);
+
+        // Hide when settled flat on ground
+        if (altitude < 0.05f || (_groundState == GroundState.Settled && !_isEndingFlight && CurrentFlightPhase != FlightPhase.Ready))
+        {
+            _groundIndicatorRoot.Visible = false;
+            return;
+        }
+
+        _groundIndicatorRoot.Visible = true;
+
+        // Position ground target ring & shadow flat on terrain
+        Vector3 groundCenter = new(discPos.X, groundY + 0.012f, discPos.Z);
+        _groundRingInstance.GlobalPosition = groundCenter;
+        _groundShadowInstance.GlobalPosition = groundCenter;
+
+        // Update vertical drop line height and center
+        float lineHeight = Mathf.Max(0.01f, discPos.Y - groundY);
+        _groundLineMesh.Height = lineHeight;
+        _groundLineInstance.GlobalPosition = new Vector3(discPos.X, groundY + lineHeight * 0.5f, discPos.Z);
     }
 }
 
