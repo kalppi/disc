@@ -40,6 +40,8 @@ public partial class CameraController : Node3D
     private float _flightYaw;
     private float _flightPitch = 12.0f;
     private bool _isAttachedToDisc = true;
+    private bool _isTweeningToAim;
+    private Tween? _cameraTween;
 
     public override void _Ready()
     {
@@ -55,6 +57,11 @@ public partial class CameraController : Node3D
             ThrowController.ThrowRequested += OnThrowRequested;
         }
 
+        if (Disc != null)
+        {
+            Disc.HoverAnimationStarted += OnHoverAnimationStarted;
+        }
+
         SnapToAimStance();
     }
 
@@ -65,6 +72,11 @@ public partial class CameraController : Node3D
             ThrowController.ResetRequested -= OnResetRequested;
             ThrowController.FreeCamToggled -= OnFreeCamToggled;
             ThrowController.ThrowRequested -= OnThrowRequested;
+        }
+
+        if (Disc != null)
+        {
+            Disc.HoverAnimationStarted -= OnHoverAnimationStarted;
         }
     }
 
@@ -106,7 +118,7 @@ public partial class CameraController : Node3D
                 _freeCamPitch -= mouseMotion.Relative.Y * FreeCamSensitivity;
                 _freeCamPitch = Mathf.Clamp(_freeCamPitch, -85.0f, 85.0f);
             }
-            else if (Disc != null && Disc.IsFlying)
+            else if (Disc != null && Disc.IsFlying && !_isTweeningToAim)
             {
                 // Orbit around the flying disc in air
                 _flightYaw -= mouseMotion.Relative.X * FlightOrbitSensitivity;
@@ -129,7 +141,7 @@ public partial class CameraController : Node3D
         {
             UpdateFreeCam(dt);
         }
-        else if (Disc != null && !Disc.IsFlying)
+        else if (Disc != null && !Disc.IsFlying && !_isTweeningToAim)
         {
             UpdateAimModeCamera();
         }
@@ -137,7 +149,7 @@ public partial class CameraController : Node3D
 
     public override void _PhysicsProcess(double delta)
     {
-        if (Camera == null || Disc == null || IsFreeCam || !Disc.IsFlying)
+        if (Camera == null || Disc == null || IsFreeCam || !Disc.IsFlying || _isTweeningToAim)
         {
             return;
         }
@@ -151,8 +163,41 @@ public partial class CameraController : Node3D
         FlightDistance = Mathf.Clamp(FlightDistance + delta * 1.3f, MinFlightDistance, MaxFlightDistance);
     }
 
+    private void OnHoverAnimationStarted(float duration)
+    {
+        if (Camera == null || Disc == null || IsFreeCam)
+        {
+            return;
+        }
+
+        Vector3 hoverPos = Disc.GetHoverPositionFor(Disc.GlobalPosition);
+        Transform3D targetTransform = GetAimTransform(hoverPos);
+
+        _cameraTween?.Kill();
+        _cameraTween = CreateTween();
+        _cameraTween.SetProcessMode(Tween.TweenProcessMode.Physics);
+        _isTweeningToAim = true;
+
+        _cameraTween.TweenProperty(Camera, "global_transform", targetTransform, duration)
+            .SetTrans(Tween.TransitionType.Cubic)
+            .SetEase(Tween.EaseType.InOut);
+
+        _cameraTween.TweenCallback(Callable.From(() =>
+        {
+            _isTweeningToAim = false;
+            if (Camera != null)
+            {
+                _cameraPosition = Camera.GlobalPosition;
+            }
+        }));
+    }
+
     private void OnThrowRequested(ThrowParameters parameters)
     {
+        _cameraTween?.Kill();
+        _cameraTween = null;
+        _isTweeningToAim = false;
+
         // Start flight orbit facing from behind the throw direction
         if (ThrowController != null)
         {
@@ -163,6 +208,10 @@ public partial class CameraController : Node3D
 
     private void OnFreeCamToggled(bool active)
     {
+        _cameraTween?.Kill();
+        _cameraTween = null;
+        _isTweeningToAim = false;
+
         IsFreeCam = active;
         if (IsFreeCam)
         {
@@ -188,6 +237,10 @@ public partial class CameraController : Node3D
 
     private void OnResetRequested()
     {
+        _cameraTween?.Kill();
+        _cameraTween = null;
+        _isTweeningToAim = false;
+
         if (ThrowController != null)
         {
             ThrowController.SetFreeCam(false);
@@ -202,39 +255,48 @@ public partial class CameraController : Node3D
             return;
         }
 
+        _cameraTween?.Kill();
+        _cameraTween = null;
+        _isTweeningToAim = false;
+
         _isAttachedToDisc = true;
         _velocity = Vector3.Zero;
 
-        Vector3 pivot = Disc.GlobalPosition;
+        Transform3D aimTransform = GetAimTransform(Disc.GlobalPosition);
+        _cameraPosition = aimTransform.Origin;
+        Camera.GlobalPosition = _cameraPosition;
+        Camera.GlobalBasis = aimTransform.Basis;
+    }
+
+    private Transform3D GetAimTransform(Vector3 pivot)
+    {
+        if (ThrowController == null)
+        {
+            return Camera?.GlobalTransform ?? Transform3D.Identity;
+        }
+
         Transform3D aimTransform = Transform3D.Identity;
         aimTransform = aimTransform.Rotated(Vector3.Up, Mathf.DegToRad(ThrowController.Yaw));
         aimTransform = aimTransform.RotatedLocal(Vector3.Right, Mathf.DegToRad(ThrowController.Pitch));
 
         float height = AimDistance * AimHeightRatio;
         Vector3 cameraOffset = aimTransform.Basis * new Vector3(0.0f, height, AimDistance);
-        _cameraPosition = pivot + cameraOffset;
+        Vector3 targetPos = pivot + cameraOffset;
 
-        Camera.GlobalPosition = _cameraPosition;
-        Camera.GlobalBasis = aimTransform.Basis;
+        return new Transform3D(aimTransform.Basis, targetPos);
     }
 
     private void UpdateAimModeCamera()
     {
-        if (Disc == null || ThrowController == null || Camera == null)
+        if (Disc == null || ThrowController == null || Camera == null || _isTweeningToAim)
         {
             return;
         }
 
         if (_isAttachedToDisc)
         {
-            Vector3 pivot = Disc.GlobalPosition;
-            Transform3D aimTransform = Transform3D.Identity;
-            aimTransform = aimTransform.Rotated(Vector3.Up, Mathf.DegToRad(ThrowController.Yaw));
-            aimTransform = aimTransform.RotatedLocal(Vector3.Right, Mathf.DegToRad(ThrowController.Pitch));
-
-            float height = AimDistance * AimHeightRatio;
-            Vector3 cameraOffset = aimTransform.Basis * new Vector3(0.0f, height, AimDistance);
-            Camera.GlobalPosition = pivot + cameraOffset;
+            Transform3D aimTransform = GetAimTransform(Disc.GlobalPosition);
+            Camera.GlobalPosition = aimTransform.Origin;
             Camera.GlobalBasis = aimTransform.Basis;
             _cameraPosition = Camera.GlobalPosition;
         }
