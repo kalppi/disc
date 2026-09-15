@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://4ijnewi7ys6w" path="res://AimVisualizer.cs" id="4_aimvis"]
 [ext_resource type="Script" uid="uid://bdu4b8iygsp4m" path="res://CameraController.cs" id="5_camctl"]
 [ext_resource type="PackedScene" uid="uid://ccevtcol4iudv" path="res://cube.tscn" id="6_i5arm"]
+[ext_resource type="Script" path="res://FlightPhaseUI.cs" id="7_phaseui"]
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_oyi63"]
 size = Vector2(200, 200)
@@ -81,6 +82,11 @@ Disc = NodePath("../DiscFlightController")
 script = ExtResource("4_aimvis")
 ThrowController = NodePath("../ThrowController")
 Disc = NodePath("../DiscFlightController")
+
+[node name="FlightPhaseUI" type="CanvasLayer" parent="." unique_id=1894732011 node_paths=PackedStringArray("Disc", "ThrowController")]
+script = ExtResource("7_phaseui")
+Disc = NodePath("../DiscFlightController")
+ThrowController = NodePath("../ThrowController")
 
 [node name="Cube" parent="." unique_id=1185660882 instance=ExtResource("6_i5arm")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.596628, 5.108036, -27.817432)
