@@ -8,15 +8,22 @@ public partial class DiscThrower : Node
     public override void _Ready()
     {
         ThrowController.ThrowRequested += OnThrowRequested;
+        ThrowController.ResetRequested += OnResetRequested;
     }
 
     public override void _ExitTree()
     {
         ThrowController.ThrowRequested -= OnThrowRequested;
+        ThrowController.ResetRequested -= OnResetRequested;
     }
 
     private void OnThrowRequested(ThrowParameters parameters)
     {
         Disc.Throw(parameters);
+    }
+
+    private void OnResetRequested()
+    {
+        Disc.ResetPosition();
     }
 }

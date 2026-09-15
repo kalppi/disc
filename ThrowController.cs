@@ -2,8 +2,10 @@ using Godot;
 
 public partial class ThrowController : Node
 {
+    [Export] public DiscFlightController? Disc { get; set; }
+
     [Export] public float AimSensitivity { get; set; } = 0.15f;
-    [Export] public float PowerSensitivity { get; set; } = 0.005f;
+    [Export] public float PowerSensitivity { get; set; } = 0.004f;
     [Export] public float ReleaseAngleSensitivity { get; set; } = 0.15f;
 
     [Export] public float MinPitch { get; set; } = -20.0f;
@@ -18,21 +20,57 @@ public partial class ThrowController : Node
     public Vector3 Direction => GetDirection();
 
     public event System.Action<ThrowParameters>? ThrowRequested;
+    public event System.Action? ResetRequested;
 
     private ThrowInputMode _mode = ThrowInputMode.Aiming;
-    private Vector2 _powerMouseOrigin;
-    private float _powerAtStart;
+
+    public override void _Ready()
+    {
+        Input.MouseMode = Input.MouseModeEnum.Captured;
+    }
 
     public override void _UnhandledInput(InputEvent @event)
     {
+        if (@event is InputEventKey keyEvent && keyEvent.Pressed)
+        {
+            if (keyEvent.Keycode == Key.Escape)
+            {
+                Input.MouseMode = Input.MouseMode == Input.MouseModeEnum.Captured
+                    ? Input.MouseModeEnum.Visible
+                    : Input.MouseModeEnum.Captured;
+                return;
+            }
+
+            if (keyEvent.Keycode == Key.R)
+            {
+                ResetRequested?.Invoke();
+                return;
+            }
+        }
+
         if (@event is InputEventMouseButton mouseButton)
         {
+            if (mouseButton.Pressed && Input.MouseMode != Input.MouseModeEnum.Captured)
+            {
+                Input.MouseMode = Input.MouseModeEnum.Captured;
+            }
+
+            if (Disc != null && Disc.IsFlying)
+            {
+                return;
+            }
+
             HandleMouseButton(mouseButton);
             return;
         }
 
         if (@event is InputEventMouseMotion mouseMotion)
         {
+            if (Disc != null && Disc.IsFlying)
+            {
+                return;
+            }
+
             HandleMouseMotion(mouseMotion);
         }
     }
@@ -56,8 +94,6 @@ public partial class ThrowController : Node
         if (mouseButton.Pressed && _mode == ThrowInputMode.Aiming)
         {
             _mode = ThrowInputMode.SettingPower;
-            _powerMouseOrigin = mouseButton.Position;
-            _powerAtStart = Power;
             return;
         }
 
@@ -91,7 +127,7 @@ public partial class ThrowController : Node
                 break;
 
             case ThrowInputMode.SettingPower:
-                UpdatePower(mouseMotion.Position);
+                UpdatePower(mouseMotion.Relative);
                 break;
 
             case ThrowInputMode.SettingReleaseAngle:
@@ -104,19 +140,15 @@ public partial class ThrowController : Node
     {
         Yaw -= mouseDelta.X * AimSensitivity;
 
-        // Pulling the mouse down aims upward, like rotating the
-        // aiming line around the throw pivot.
+        // Pulling the mouse down aims upward, moving up aims downward
         Pitch += mouseDelta.Y * AimSensitivity;
         Pitch = Mathf.Clamp(Pitch, MinPitch, MaxPitch);
     }
 
-    private void UpdatePower(Vector2 mousePosition)
+    private void UpdatePower(Vector2 mouseDelta)
     {
-        // Pulling downward from the point where LMB was pressed
-        // increases throw power. Moving back up reduces it.
-        float pullDistance = mousePosition.Y - _powerMouseOrigin.Y;
-
-        Power = _powerAtStart + pullDistance * PowerSensitivity;
+        // Pulling downward increases power; moving up decreases power
+        Power += mouseDelta.Y * PowerSensitivity;
         Power = Mathf.Clamp(Power, 0.0f, 1.0f);
     }
 
