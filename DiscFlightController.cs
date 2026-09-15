@@ -4,6 +4,8 @@ public partial class DiscFlightController : RigidBody3D
 {
     [ExportGroup("Throw Setup")]
     [Export] public float HoverHeight { get; set; } = 1.5f;
+    [Export] public float SettleDelay { get; set; } = 1.0f;
+    [Export] public float HoverAnimationDuration { get; set; } = 0.8f;
     [Export] public float MinThrowSpeed { get; set; } = 12.0f;
     [Export] public float MaxThrowSpeed { get; set; } = 32.0f;
 
@@ -34,6 +36,8 @@ public partial class DiscFlightController : RigidBody3D
     private Quaternion _startRotation;
     private bool _hasTouchedGround;
     private float _groundContactTimer;
+    private bool _isEndingFlight;
+    private Tween? _hoverTween;
 
     public override void _Ready()
     {
@@ -54,7 +58,7 @@ public partial class DiscFlightController : RigidBody3D
 
     public override void _PhysicsProcess(double delta)
     {
-        if (!IsFlying)
+        if (!IsFlying || _isEndingFlight)
         {
             return;
         }
@@ -81,6 +85,10 @@ public partial class DiscFlightController : RigidBody3D
 
     public void Throw(ThrowParameters parameters)
     {
+        _hoverTween?.Kill();
+        _hoverTween = null;
+        _isEndingFlight = false;
+
         Freeze = false;
         Sleeping = false;
         _hasTouchedGround = false;
@@ -108,11 +116,17 @@ public partial class DiscFlightController : RigidBody3D
 
     public void ResetPosition()
     {
+        _hoverTween?.Kill();
+        _hoverTween = null;
+        _isEndingFlight = false;
         SetupNewTurnHover(_startPosition);
     }
 
     public void SetupNewTurnHover(Vector3 basePosition)
     {
+        _hoverTween?.Kill();
+        _hoverTween = null;
+        _isEndingFlight = false;
         IsFlying = false;
         Freeze = true;
         LinearVelocity = Vector3.Zero;
@@ -243,7 +257,57 @@ public partial class DiscFlightController : RigidBody3D
 
     private void EndFlight()
     {
-        SetupNewTurnHover(GlobalPosition);
+        if (_isEndingFlight)
+        {
+            return;
+        }
+
+        _isEndingFlight = true;
+        Freeze = true;
+        LinearVelocity = Vector3.Zero;
+        AngularVelocity = Vector3.Zero;
+        GravityScale = 0.0f;
+
+        Vector3 groundPos = GlobalPosition;
+        float groundY = GetGroundHeightAt(groundPos);
+        Vector3 hoverPosition = new(groundPos.X, groundY + HoverHeight, groundPos.Z);
+        Basis targetBasis = new(_startRotation);
+
+        _hoverTween?.Kill();
+        _hoverTween = CreateTween();
+        _hoverTween.SetProcessMode(Tween.TweenProcessMode.Physics);
+
+        // Settle on the ground for a second before animating to hover
+        _hoverTween.TweenInterval(SettleDelay);
+
+        // Smoothly lift disc to hover height
+        _hoverTween.TweenProperty(this, "global_position", hoverPosition, HoverAnimationDuration)
+            .SetTrans(Tween.TransitionType.Cubic)
+            .SetEase(Tween.EaseType.InOut);
+
+        // Smoothly level out visual rotation
+        if (DiscVisual != null)
+        {
+            _hoverTween.Parallel()
+                .TweenProperty(DiscVisual, "transform", Transform3D.Identity, HoverAnimationDuration)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.InOut);
+        }
+
+        _hoverTween.TweenCallback(Callable.From(() =>
+        {
+            GlobalTransform = new Transform3D(targetBasis, hoverPosition);
+            CurrentBankAngle = 0.0f;
+
+            if (DiscVisual != null)
+            {
+                DiscVisual.Transform = Transform3D.Identity;
+            }
+
+            _isEndingFlight = false;
+            IsFlying = false;
+            NewTurnStarted?.Invoke();
+        }));
     }
 
     private float GetGroundHeightAt(Vector3 position)
