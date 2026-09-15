@@ -15,6 +15,9 @@ albedo_color = Color(0.18, 0.42, 0.22, 1)
 [sub_resource type="BoxShape3D" id="BoxShape3D_oyi63"]
 size = Vector3(200, 1, 200)
 
+[sub_resource type="BoxMesh" id="BoxMesh_oyi63"]
+size = Vector3(10, 10, 10)
+
 [sub_resource type="CylinderMesh" id="CylinderMesh_disc"]
 top_radius = 0.35
 bottom_radius = 0.35
@@ -41,6 +44,14 @@ surface_material_override/0 = SubResource("StandardMaterial3D_rj1ju")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 shape = SubResource("BoxShape3D_oyi63")
 
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=1952815622]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.596628, 5.108036, -27.817432)
+mesh = SubResource("BoxMesh_oyi63")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="Ground" unique_id=899874302]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56.13588, 5.108036, -27.817432)
+mesh = SubResource("BoxMesh_oyi63")
+
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1607587959]
 transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 20, 0)
 shadow_enabled = true
@@ -66,7 +77,6 @@ script = ExtResource("5_camctl")
 Camera = NodePath("Camera3D")
 ThrowController = NodePath("../ThrowController")
 Disc = NodePath("../DiscFlightController")
-AimDistance = 7.0
 
 [node name="Camera3D" type="Camera3D" parent="CameraController" unique_id=2140365066]
 transform = Transform3D(1, 0, 0, 0, 0.965926, 0.258819, 0, -0.258819, 0.965926, 0, 3, 4)

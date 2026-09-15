@@ -17,7 +17,8 @@ public partial class CameraController : Node3D
     [Export] public float FlightHeightRatio { get; set; } = 0.30f;
     [Export] public float MinFlightDistance { get; set; } = 2.5f;
     [Export] public float MaxFlightDistance { get; set; } = 22.0f;
-    [Export] public float FlightFollowSpeed { get; set; } = 14.0f;
+    [Export] public float FlightFollowSpeed { get; set; } = 16.0f;
+    [Export] public float FlightRotationSpeed { get; set; } = 14.0f;
     [Export] public float FlightOrbitSensitivity { get; set; } = 0.15f;
 
     [ExportGroup("Zoom Controls")]
@@ -38,7 +39,7 @@ public partial class CameraController : Node3D
     private float _freeCamYaw;
     private float _freeCamPitch;
     private float _flightYaw;
-    private float _flightPitch = 12.0f;
+    private float _flightPitch;
     private bool _isAttachedToDisc = true;
     private bool _isTweeningToAim;
     private Tween? _cameraTween;
@@ -198,11 +199,16 @@ public partial class CameraController : Node3D
         _cameraTween = null;
         _isTweeningToAim = false;
 
-        // Start flight orbit facing from behind the throw direction
+        // Initialize flight orbit rotation directly from aim rotation
         if (ThrowController != null)
         {
             _flightYaw = ThrowController.Yaw;
-            _flightPitch = Mathf.Clamp(ThrowController.Pitch * 0.5f + 10.0f, 5.0f, 35.0f);
+            _flightPitch = ThrowController.Pitch;
+        }
+
+        if (Camera != null)
+        {
+            _cameraPosition = Camera.GlobalPosition;
         }
     }
 
@@ -308,28 +314,34 @@ public partial class CameraController : Node3D
 
     private void UpdateFlightOrbitCamera(float dt)
     {
-        Vector3 discPos = Disc!.GlobalPosition;
+        if (Disc == null || Camera == null)
+        {
+            return;
+        }
 
-        float yawRad = Mathf.DegToRad(_flightYaw);
-        float pitchRad = Mathf.DegToRad(_flightPitch);
+        Vector3 discPos = Disc.GlobalPosition;
 
-        float horizDistance = FlightDistance * Mathf.Cos(pitchRad * 0.4f);
-        float height = FlightDistance * FlightHeightRatio - FlightDistance * Mathf.Sin(pitchRad * 0.4f);
+        // Construct flight camera basis from current flight yaw & pitch
+        Transform3D flightTransform = Transform3D.Identity;
+        flightTransform = flightTransform.Rotated(Vector3.Up, Mathf.DegToRad(_flightYaw));
+        flightTransform = flightTransform.RotatedLocal(Vector3.Right, Mathf.DegToRad(_flightPitch));
 
-        Vector3 offset = new(
-            -Mathf.Sin(yawRad) * horizDistance,
-            height,
-            Mathf.Cos(yawRad) * horizDistance
-        );
-
+        float height = FlightDistance * FlightHeightRatio;
+        Vector3 offset = flightTransform.Basis * new Vector3(0.0f, height, FlightDistance);
         Vector3 targetPos = discPos + offset;
-        Vector3 lookTarget = discPos;
 
+        // Position follow
         float posBlend = Mathf.Clamp(FlightFollowSpeed * dt, 0.0f, 1.0f);
         _cameraPosition = _cameraPosition.Lerp(targetPos, posBlend);
+        Camera.GlobalPosition = _cameraPosition;
 
-        Camera!.GlobalPosition = _cameraPosition;
-        Camera.LookAt(lookTarget, Vector3.Up);
+        // Rotation follow (smoothly aligns with flight basis, seamlessly matching aim basis at launch)
+        float rotBlend = Mathf.Clamp(FlightRotationSpeed * dt, 0.0f, 1.0f);
+        Quaternion currentQuat = Camera.GlobalBasis.GetRotationQuaternion();
+        Quaternion targetQuat = flightTransform.Basis.GetRotationQuaternion();
+        Quaternion slerpedQuat = currentQuat.Slerp(targetQuat, rotBlend);
+
+        Camera.GlobalBasis = new Basis(slerpedQuat);
     }
 
     private void UpdateFreeCam(float dt)
