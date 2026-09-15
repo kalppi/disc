@@ -68,6 +68,7 @@ script = ExtResource("5_camctl")
 Camera = NodePath("Camera3D")
 ThrowController = NodePath("../ThrowController")
 Disc = NodePath("../DiscFlightController")
+ResetCameraOnFreeLookEnd = false
 
 [node name="Camera3D" type="Camera3D" parent="CameraController" unique_id=2140365066]
 transform = Transform3D(1, 0, 0, 0, 0.965926, 0.258819, 0, -0.258819, 0.965926, 0, 3, 4)
@@ -83,10 +84,11 @@ script = ExtResource("4_aimvis")
 ThrowController = NodePath("../ThrowController")
 Disc = NodePath("../DiscFlightController")
 
-[node name="FlightPhaseUI" type="CanvasLayer" parent="." unique_id=1894732011 node_paths=PackedStringArray("Disc", "ThrowController")]
+[node name="FlightPhaseUI" type="CanvasLayer" parent="." unique_id=1894732011 node_paths=PackedStringArray("Disc", "ThrowController", "CameraController")]
 script = ExtResource("7_phaseui")
 Disc = NodePath("../DiscFlightController")
 ThrowController = NodePath("../ThrowController")
+CameraController = NodePath("../CameraController")
 
 [node name="Cube" parent="." unique_id=1185660882 instance=ExtResource("6_i5arm")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.596628, 5.108036, -27.817432)

@@ -15,6 +15,7 @@ public partial class CameraController : Node3D
     [ExportGroup("Free-Look Survey Camera (Hold RMB)")]
     [Export] public float FreeLookSensitivity { get; set; } = 0.15f;
     [Export] public float FreeLookReturnDuration { get; set; } = 0.25f;
+    [Export] public bool ResetCameraOnFreeLookEnd { get; set; } = true;
 
     [ExportGroup("Flight Orbit Camera")]
     [Export] public float FlightDistance { get; set; } = 5.5f;
@@ -28,11 +29,13 @@ public partial class CameraController : Node3D
     [ExportGroup("Zoom Controls")]
     [Export] public float ZoomStep { get; set; } = 0.5f;
 
+    public event System.Action<bool>? FreeLookResetToggled;
+
     private Vector3 _cameraPosition;
+    private float _camYaw;
+    private float _camPitch;
     private float _flightYaw;
     private float _flightPitch;
-    private float _freeLookYaw;
-    private float _freeLookPitch;
     private bool _isFreeLooking;
     private bool _isTweeningToAim;
     private Tween? _cameraTween;
@@ -80,6 +83,15 @@ public partial class CameraController : Node3D
 
     public override void _UnhandledInput(InputEvent @event)
     {
+        if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo)
+        {
+            if (keyEvent.Keycode == Key.F || keyEvent.Keycode == Key.C)
+            {
+                ToggleFreeLookReset();
+                return;
+            }
+        }
+
         if (@event is InputEventMouseButton mouseButton && mouseButton.Pressed)
         {
             if (mouseButton.ButtonIndex == MouseButton.WheelUp)
@@ -105,6 +117,12 @@ public partial class CameraController : Node3D
                 _flightPitch = Mathf.Clamp(_flightPitch, -30.0f, 65.0f);
             }
         }
+    }
+
+    public void ToggleFreeLookReset()
+    {
+        ResetCameraOnFreeLookEnd = !ResetCameraOnFreeLookEnd;
+        FreeLookResetToggled?.Invoke(ResetCameraOnFreeLookEnd);
     }
 
     public override void _Process(double delta)
@@ -143,8 +161,6 @@ public partial class CameraController : Node3D
         _isTweeningToAim = false;
 
         _isFreeLooking = true;
-        _freeLookYaw = ThrowController?.Yaw ?? 0.0f;
-        _freeLookPitch = ThrowController?.Pitch ?? 10.0f;
     }
 
     private void OnFreeLookEnded()
@@ -156,8 +172,18 @@ public partial class CameraController : Node3D
             return;
         }
 
+        if (!ResetCameraOnFreeLookEnd)
+        {
+            // Do NOT change throw direction, and do NOT reset camera position!
+            // Camera remains positioned at its current surveyed viewpoint.
+            _cameraPosition = Camera.GlobalPosition;
+            return;
+        }
+
         // Smoothly snap back to aim stance
-        Transform3D targetTransform = GetOrbitTransform(Disc.GlobalPosition, ThrowController.Yaw, ThrowController.Pitch);
+        _camYaw = ThrowController.Yaw;
+        _camPitch = ThrowController.Pitch;
+        Transform3D targetTransform = GetOrbitTransform(Disc.GlobalPosition, _camYaw, _camPitch);
 
         _cameraTween?.Kill();
         _cameraTween = CreateTween();
@@ -185,11 +211,11 @@ public partial class CameraController : Node3D
             return;
         }
 
-        _freeLookYaw -= relative.X * FreeLookSensitivity;
-        _freeLookPitch += relative.Y * FreeLookSensitivity;
-        _freeLookPitch = Mathf.Clamp(_freeLookPitch, -80.0f, 80.0f);
+        _camYaw -= relative.X * FreeLookSensitivity;
+        _camPitch += relative.Y * FreeLookSensitivity;
+        _camPitch = Mathf.Clamp(_camPitch, -80.0f, 80.0f);
 
-        Transform3D orbitTransform = GetOrbitTransform(Disc.GlobalPosition, _freeLookYaw, _freeLookPitch);
+        Transform3D orbitTransform = GetOrbitTransform(Disc.GlobalPosition, _camYaw, _camPitch);
         Camera.GlobalPosition = orbitTransform.Origin;
         Camera.GlobalBasis = orbitTransform.Basis;
         _cameraPosition = Camera.GlobalPosition;
@@ -208,11 +234,11 @@ public partial class CameraController : Node3D
             ThrowController.SetAim(_flightYaw, _flightPitch);
         }
 
-        float yaw = ThrowController?.Yaw ?? _flightYaw;
-        float pitch = ThrowController?.Pitch ?? _flightPitch;
+        _camYaw = ThrowController?.Yaw ?? _flightYaw;
+        _camPitch = ThrowController?.Pitch ?? _flightPitch;
 
         Vector3 hoverPos = Disc.GetHoverPositionFor(Disc.GlobalPosition);
-        Transform3D targetTransform = GetOrbitTransform(hoverPos, yaw, pitch);
+        Transform3D targetTransform = GetOrbitTransform(hoverPos, _camYaw, _camPitch);
 
         _cameraTween?.Kill();
         _cameraTween = CreateTween();
@@ -240,12 +266,9 @@ public partial class CameraController : Node3D
         _isTweeningToAim = false;
         _isFreeLooking = false;
 
-        // Initialize flight orbit rotation directly from current aim rotation
-        if (ThrowController != null)
-        {
-            _flightYaw = ThrowController.Yaw;
-            _flightPitch = ThrowController.Pitch;
-        }
+        // Initialize flight orbit rotation directly from current camera rotation
+        _flightYaw = _camYaw;
+        _flightPitch = _camPitch;
 
         if (Camera != null)
         {
@@ -275,10 +298,13 @@ public partial class CameraController : Node3D
         _isTweeningToAim = false;
         _isFreeLooking = false;
 
-        float yaw = ThrowController?.Yaw ?? 0.0f;
-        float pitch = ThrowController?.Pitch ?? 10.0f;
+        if (ResetCameraOnFreeLookEnd || ThrowController == null)
+        {
+            _camYaw = ThrowController?.Yaw ?? 0.0f;
+            _camPitch = ThrowController?.Pitch ?? 10.0f;
+        }
 
-        Transform3D aimTransform = GetOrbitTransform(Disc.GlobalPosition, yaw, pitch);
+        Transform3D aimTransform = GetOrbitTransform(Disc.GlobalPosition, _camYaw, _camPitch);
         _cameraPosition = aimTransform.Origin;
         Camera.GlobalPosition = _cameraPosition;
         Camera.GlobalBasis = aimTransform.Basis;
@@ -304,7 +330,13 @@ public partial class CameraController : Node3D
             return;
         }
 
-        Transform3D aimTransform = GetOrbitTransform(Disc.GlobalPosition, ThrowController.Yaw, ThrowController.Pitch);
+        if (ResetCameraOnFreeLookEnd)
+        {
+            _camYaw = ThrowController.Yaw;
+            _camPitch = ThrowController.Pitch;
+        }
+
+        Transform3D aimTransform = GetOrbitTransform(Disc.GlobalPosition, _camYaw, _camPitch);
         Camera.GlobalPosition = aimTransform.Origin;
         Camera.GlobalBasis = aimTransform.Basis;
         _cameraPosition = Camera.GlobalPosition;

@@ -4,6 +4,7 @@ public partial class FlightPhaseUI : CanvasLayer
 {
     [Export] public DiscFlightController? Disc { get; set; }
     [Export] public ThrowController? ThrowController { get; set; }
+    [Export] public CameraController? CameraController { get; set; }
 
     [ExportGroup("Phase Colors")]
     [Export] public Color LaunchColor { get; set; } = new(0.98f, 0.55f, 0.12f, 0.90f); // Vibrant Orange
@@ -39,9 +40,10 @@ public partial class FlightPhaseUI : CanvasLayer
     private Label _powerLabel = null!;
     private Label _pitchLabel = null!;
     private Label _angleLabel = null!;
+    private Label _camModeBadge = null!;
     private Label _airtimeLabel = null!;
 
-    private const float TotalBarWidth = 340.0f;
+    private const float TotalBarWidth = 350.0f;
     private const float BarHeight = 22.0f;
 
     public override void _Ready()
@@ -174,12 +176,12 @@ public partial class FlightPhaseUI : CanvasLayer
         _barContainer.AddChild(_glideSegment);
         _barContainer.AddChild(_fadeSegment);
 
-        // 5. Bottom Row: Live Phase Badge, Power, Pitch, Angle, Airtime
+        // 5. Bottom Row: Live Phase Badge, Power, Pitch, Angle, Camera Mode, Airtime
         var bottomRow = new HBoxContainer
         {
             Alignment = BoxContainer.AlignmentMode.Begin
         };
-        bottomRow.AddThemeConstantOverride("separation", 7);
+        bottomRow.AddThemeConstantOverride("separation", 6);
         vBox.AddChild(bottomRow);
 
         _livePhaseBadge = CreateBadge("READY", new Color(0.2f, 0.9f, 0.4f));
@@ -199,6 +201,9 @@ public partial class FlightPhaseUI : CanvasLayer
         _angleLabel.AddThemeFontSizeOverride("font_size", 10);
         _angleLabel.AddThemeColorOverride("font_color", new Color(0.85f, 0.88f, 0.92f));
         bottomRow.AddChild(_angleLabel);
+
+        _camModeBadge = CreateBadge("[F] Snap", new Color(0.45f, 0.6f, 0.75f));
+        bottomRow.AddChild(_camModeBadge);
 
         _airtimeLabel = new Label
         {
@@ -347,6 +352,21 @@ public partial class FlightPhaseUI : CanvasLayer
         else
         {
             _angleLabel.Text = $"{releaseAngle:F0}° Hyz";
+        }
+
+        // Camera Free-Look Reset Mode Badge
+        if (CameraController != null)
+        {
+            if (CameraController.ResetCameraOnFreeLookEnd)
+            {
+                _camModeBadge.Text = " [F] Snap ";
+                _camModeBadge.AddThemeColorOverride("font_color", new Color(0.65f, 0.72f, 0.82f));
+            }
+            else
+            {
+                _camModeBadge.Text = " [F] Keep ";
+                _camModeBadge.AddThemeColorOverride("font_color", new Color(0.2f, 0.95f, 0.6f));
+            }
         }
 
         _airtimeLabel.Text = $"~{tendency.EstimatedAirTime:F1}s";
