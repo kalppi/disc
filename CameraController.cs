@@ -186,6 +186,7 @@ public partial class CameraController : Node3D
         _cameraTween.TweenCallback(Callable.From(() =>
         {
             _isTweeningToAim = false;
+            _isAttachedToDisc = true;
             if (Camera != null)
             {
                 _cameraPosition = Camera.GlobalPosition;
@@ -234,9 +235,54 @@ public partial class CameraController : Node3D
         }
         else
         {
-            if (Camera != null)
+            // Returning to Aim mode
+            if (ThrowController != null)
             {
-                _cameraPosition = Camera.GlobalPosition;
+                // Synchronize throw aim with the view direction from rotate mode
+                ThrowController.SetAim(_freeCamYaw, _freeCamPitch);
+            }
+
+            if (Disc != null && Camera != null)
+            {
+                Transform3D targetTransform = GetAimTransform(Disc.GlobalPosition);
+                float dist = Camera.GlobalPosition.DistanceTo(targetTransform.Origin);
+
+                if (dist > 0.8f)
+                {
+                    // If player moved away in free cam, smoothly tween back to aim stance
+                    _cameraTween = CreateTween();
+                    _cameraTween.SetProcessMode(Tween.TweenProcessMode.Physics);
+                    _isTweeningToAim = true;
+
+                    _cameraTween.TweenProperty(Camera, "global_transform", targetTransform, 0.35f)
+                        .SetTrans(Tween.TransitionType.Cubic)
+                        .SetEase(Tween.EaseType.InOut);
+
+                    _cameraTween.TweenCallback(Callable.From(() =>
+                    {
+                        _isTweeningToAim = false;
+                        _isAttachedToDisc = true;
+                        _velocity = Vector3.Zero;
+                        if (Camera != null)
+                        {
+                            _cameraPosition = Camera.GlobalPosition;
+                        }
+                    }));
+                }
+                else
+                {
+                    // Seamless re-attachment without jump
+                    _isAttachedToDisc = true;
+                    _velocity = Vector3.Zero;
+                    Camera.GlobalPosition = targetTransform.Origin;
+                    Camera.GlobalBasis = targetTransform.Basis;
+                    _cameraPosition = Camera.GlobalPosition;
+                }
+            }
+            else
+            {
+                _isAttachedToDisc = true;
+                _velocity = Vector3.Zero;
             }
         }
     }
@@ -335,7 +381,7 @@ public partial class CameraController : Node3D
         _cameraPosition = _cameraPosition.Lerp(targetPos, posBlend);
         Camera.GlobalPosition = _cameraPosition;
 
-        // Rotation follow (smoothly aligns with flight basis, seamlessly matching aim basis at launch)
+        // Rotation follow
         float rotBlend = Mathf.Clamp(FlightRotationSpeed * dt, 0.0f, 1.0f);
         Quaternion currentQuat = Camera.GlobalBasis.GetRotationQuaternion();
         Quaternion targetQuat = flightTransform.Basis.GetRotationQuaternion();

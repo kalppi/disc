@@ -91,6 +91,12 @@ public partial class ThrowController : Node
         }
     }
 
+    public void SetAim(float yaw, float pitch)
+    {
+        Yaw = yaw;
+        Pitch = Mathf.Clamp(pitch, MinPitch, MaxPitch);
+    }
+
     public void ToggleFreeCam()
     {
         IsFreeCam = !IsFreeCam;
