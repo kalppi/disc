@@ -4,12 +4,25 @@ public partial class ThrowController : Node
 {
     [Export] public DiscFlightController? Disc { get; set; }
 
+    [ExportGroup("Throw Technique")]
+    [Export] public ThrowTechnique Technique { get; set; } = ThrowTechnique.RHBH;
+
+    [ExportGroup("Power & Auto-Charge Control")]
+    [Export] public bool AutoChargePower { get; set; } = true;
+    [Export] public float ChargeDuration { get; set; } = 1.25f; // Seconds to reach 100% power
+    [Export] public bool PingPongCharge { get; set; } = true;   // Oscillate down and up if held past 100%
+    [Export] public float MinChargePower { get; set; } = 0.08f;
+    [Export] public float MaxChargePower { get; set; } = 1.0f;
+    [Export] public bool ResetPowerOnNewTurn { get; set; } = true;
+    [Export] public bool ResetAngleOnNewTurn { get; set; } = false;
+
     [ExportGroup("Aim Sensitivity")]
     [Export] public float AimSensitivity { get; set; } = 0.15f;
     [Export] public float AimWhileChargingSensitivity { get; set; } = 0.0f;
     [Export] public float PowerSensitivity { get; set; } = 0.004f;
     [Export] public float PowerStep { get; set; } = 0.05f;
     [Export] public float TiltStep { get; set; } = 5.0f;
+    [Export] public float TiltSensitivity { get; set; } = 0.20f;
     [Export] public bool LockAimWhileCharging { get; set; } = true;
 
     [ExportGroup("Limits")]
@@ -25,6 +38,7 @@ public partial class ThrowController : Node
 
     public bool IsHoldingLmb => _isHoldingLmb;
     public bool IsHoldingRmb => _isHoldingRmb;
+    public bool IsHoldingMmb => _isHoldingMmb;
 
     public Vector3 Direction => GetDirection();
 
@@ -33,14 +47,58 @@ public partial class ThrowController : Node
     public event System.Action? FreeLookStarted;
     public event System.Action? FreeLookEnded;
     public event System.Action<Vector2>? FreeLookMotion;
+    public event System.Action<ThrowTechnique>? TechniqueChanged;
 
     private bool _isHoldingLmb;
     private bool _isHoldingRmb;
+    private bool _isHoldingMmb;
+    private float _mmbDragAccum;
+    private float _chargeDirection = 1.0f;
 
     public override void _Ready()
     {
         Input.MouseMode = Input.MouseModeEnum.Captured;
-        Power = DefaultPower;
+        Power = AutoChargePower ? MinChargePower : DefaultPower;
+
+        if (Disc != null)
+        {
+            Disc.NewTurnStarted += OnNewTurnStarted;
+        }
+    }
+
+    public override void _ExitTree()
+    {
+        if (Disc != null)
+        {
+            Disc.NewTurnStarted -= OnNewTurnStarted;
+        }
+    }
+
+    public override void _Process(double delta)
+    {
+        // Smooth hold-to-charge when auto-charge is enabled
+        if (AutoChargePower && _isHoldingLmb)
+        {
+            float chargeSpeed = (MaxChargePower - MinChargePower) / Mathf.Max(0.1f, ChargeDuration);
+            Power += _chargeDirection * chargeSpeed * (float)delta;
+
+            if (Power >= MaxChargePower)
+            {
+                Power = MaxChargePower;
+                if (PingPongCharge)
+                {
+                    _chargeDirection = -1.0f;
+                }
+            }
+            else if (Power <= MinChargePower)
+            {
+                Power = MinChargePower;
+                if (PingPongCharge)
+                {
+                    _chargeDirection = 1.0f;
+                }
+            }
+        }
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -53,6 +111,7 @@ public partial class ThrowController : Node
                 {
                     // Cancel current charge without throwing
                     _isHoldingLmb = false;
+                    ResetPowerToStanceBaseline();
                     return;
                 }
 
@@ -65,6 +124,15 @@ public partial class ThrowController : Node
             if (keyEvent.Keycode == Key.R)
             {
                 ResetRequested?.Invoke();
+                return;
+            }
+
+            // T or Tab cycles throw technique (Shift+T or Shift+Tab moves backward)
+            if (keyEvent.Keycode == Key.T || keyEvent.Keycode == Key.Tab)
+            {
+                bool backward = keyEvent.ShiftPressed || Input.IsKeyPressed(Key.Shift);
+                CycleTechnique(backward);
+                GetViewport()?.SetInputAsHandled();
                 return;
             }
 
@@ -139,6 +207,40 @@ public partial class ThrowController : Node
         }
     }
 
+    public void CycleTechnique(bool backward = false)
+    {
+        if (backward)
+        {
+            Technique = Technique switch
+            {
+                ThrowTechnique.RHBH => ThrowTechnique.LHFH,
+                ThrowTechnique.LHFH => ThrowTechnique.LHBH,
+                ThrowTechnique.LHBH => ThrowTechnique.RHFH,
+                ThrowTechnique.RHFH => ThrowTechnique.RHBH,
+                _ => ThrowTechnique.RHBH
+            };
+        }
+        else
+        {
+            Technique = Technique switch
+            {
+                ThrowTechnique.RHBH => ThrowTechnique.RHFH,
+                ThrowTechnique.RHFH => ThrowTechnique.LHBH,
+                ThrowTechnique.LHBH => ThrowTechnique.LHFH,
+                ThrowTechnique.LHFH => ThrowTechnique.RHBH,
+                _ => ThrowTechnique.RHBH
+            };
+        }
+
+        TechniqueChanged?.Invoke(Technique);
+    }
+
+    public void SetTechnique(ThrowTechnique technique)
+    {
+        Technique = technique;
+        TechniqueChanged?.Invoke(Technique);
+    }
+
     public void AdjustPower(float delta)
     {
         Power = Mathf.Clamp(Power + delta, 0.05f, 1.0f);
@@ -161,6 +263,7 @@ public partial class ThrowController : Node
                 {
                     // RMB click while charging cancels the throw safely
                     _isHoldingLmb = false;
+                    ResetPowerToStanceBaseline();
                     return;
                 }
 
@@ -175,16 +278,52 @@ public partial class ThrowController : Node
             return;
         }
 
-        // 2. Left Mouse Button: Power Pull-back & Launch
+        // 2. Middle Mouse Button: Hold & Drag for smooth Hyzer/Anhyzer, Single Click for instant Flat (0°) reset
+        if (mouseButton.ButtonIndex == MouseButton.Middle)
+        {
+            if (mouseButton.Pressed)
+            {
+                if (_isHoldingLmb)
+                {
+                    _isHoldingLmb = false;
+                    ResetPowerToStanceBaseline();
+                    return;
+                }
+
+                _isHoldingMmb = true;
+                _mmbDragAccum = 0.0f;
+            }
+            else
+            {
+                if (_isHoldingMmb)
+                {
+                    // If released with negligible movement, treat as a quick-reset click
+                    if (_mmbDragAccum < 4.0f)
+                    {
+                        ReleaseAngle = 0.0f;
+                    }
+                    _isHoldingMmb = false;
+                }
+            }
+            return;
+        }
+
+        // 3. Left Mouse Button: Power Pull-back / Auto-Charge & Launch
         if (mouseButton.ButtonIndex == MouseButton.Left)
         {
-            if (_isHoldingRmb)
+            if (_isHoldingRmb || _isHoldingMmb)
             {
                 return;
             }
 
             if (mouseButton.Pressed)
             {
+                if (AutoChargePower)
+                {
+                    Power = MinChargePower;
+                    _chargeDirection = 1.0f;
+                }
+
                 _isHoldingLmb = true;
             }
             else if (_isHoldingLmb)
@@ -204,7 +343,15 @@ public partial class ThrowController : Node
             return;
         }
 
-        // B. If holding LMB: Charge power with vertical mouse pull without drifting aim
+        // B. If holding MMB: Smooth Hyzer / Anhyzer disc tilt control
+        if (_isHoldingMmb)
+        {
+            _mmbDragAccum += Mathf.Abs(mouseMotion.Relative.X) + Mathf.Abs(mouseMotion.Relative.Y);
+            ReleaseAngle = Mathf.Clamp(ReleaseAngle + mouseMotion.Relative.X * TiltSensitivity, -MaxReleaseAngle, MaxReleaseAngle);
+            return;
+        }
+
+        // C. If holding LMB:
         if (_isHoldingLmb)
         {
             if (!LockAimWhileCharging && AimWhileChargingSensitivity > 0.001f)
@@ -212,13 +359,16 @@ public partial class ThrowController : Node
                 Yaw -= mouseMotion.Relative.X * AimWhileChargingSensitivity;
             }
 
-            // Vertical mouse movement pulls back / increases power
-            Power += mouseMotion.Relative.Y * PowerSensitivity;
-            Power = Mathf.Clamp(Power, 0.05f, 1.0f);
+            // Only manually pull back power when AutoChargePower is disabled
+            if (!AutoChargePower)
+            {
+                Power += mouseMotion.Relative.Y * PowerSensitivity;
+                Power = Mathf.Clamp(Power, 0.05f, 1.0f);
+            }
             return;
         }
 
-        // C. Default (Idle Stance): Mouse directly rotates Aim direction & Camera (Yaw & Pitch)
+        // D. Default (Idle Stance): Mouse directly rotates Aim direction & Camera (Yaw & Pitch)
         Yaw -= mouseMotion.Relative.X * AimSensitivity;
         Pitch += mouseMotion.Relative.Y * AimSensitivity;
         Pitch = Mathf.Clamp(Pitch, MinPitch, MaxPitch);
@@ -238,9 +388,34 @@ public partial class ThrowController : Node
         var parameters = new ThrowParameters(
             Direction,
             Power,
-            ReleaseAngle
+            ReleaseAngle,
+            Technique
         );
 
         ThrowRequested?.Invoke(parameters);
+
+        if (ResetPowerOnNewTurn)
+        {
+            ResetPowerToStanceBaseline();
+        }
+    }
+
+    private void OnNewTurnStarted()
+    {
+        if (ResetPowerOnNewTurn)
+        {
+            ResetPowerToStanceBaseline();
+        }
+
+        if (ResetAngleOnNewTurn)
+        {
+            ReleaseAngle = 0.0f;
+        }
+    }
+
+    private void ResetPowerToStanceBaseline()
+    {
+        Power = AutoChargePower ? MinChargePower : DefaultPower;
+        _chargeDirection = 1.0f;
     }
 }

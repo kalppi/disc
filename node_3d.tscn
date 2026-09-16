@@ -50,6 +50,7 @@ shadow_enabled = true
 [node name="ThrowController" type="Node" parent="." unique_id=385778070 node_paths=PackedStringArray("Disc")]
 script = ExtResource("1_a0tk4")
 Disc = NodePath("../DiscFlightController")
+ResetAngleOnNewTurn = true
 
 [node name="DiscFlightController" type="RigidBody3D" parent="." unique_id=1387924686 node_paths=PackedStringArray("DiscVisual")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 0)
