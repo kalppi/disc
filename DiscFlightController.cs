@@ -9,17 +9,8 @@ public partial class DiscFlightController : RigidBody3D
         Turn,       // High-speed turn
         Glide,      // Cruise speed, maximum lift & line-holding
         Fade,       // Low-speed fade
-        Ground,     // Skipping, rolling, or sliding on surface
+        Ground,     // Rolling, sliding, or bouncing on surface
         Settled     // Rested on ground, awaiting hover lift
-    }
-
-    public enum GroundState
-    {
-        Airborne,
-        Skipping,
-        Rolling,
-        Sliding,
-        Settled
     }
 
     [ExportGroup("Disc Ratings (Flight Numbers)")]
@@ -30,36 +21,30 @@ public partial class DiscFlightController : RigidBody3D
 
     [ExportGroup("Throw Setup")]
     [Export] public float HoverHeight { get; set; } = 1.5f;
-    [Export] public float SettleDelay { get; set; } = 1.0f;
-    [Export] public float HoverAnimationDuration { get; set; } = 0.8f;
+    [Export] public float SettleDelay { get; set; } = 0.6f;
+    [Export] public float HoverAnimationDuration { get; set; } = 0.75f;
     [Export] public float MinThrowSpeed { get; set; } = 12.0f;
     [Export] public float MaxThrowSpeed { get; set; } = 34.0f;
 
-    [ExportGroup("Arcade Aerodynamics Tuning")]
+    [ExportGroup("Aerodynamics Tuning")]
     [Export] public float TurnMultiplier { get; set; } = 18.0f;
     [Export] public float FadeMultiplier { get; set; } = 20.0f;
-    [Export] public float GlideMultiplier { get; set; } = 1.35f;
-    [Export] public float BaseFlightGravityScale { get; set; } = 0.30f;
-    [Export] public float BaseAirDrag { get; set; } = 0.075f;
-    [Export] public float LateralForceMultiplier { get; set; } = 1.45f;
+    [Export] public float GlideMultiplier { get; set; } = 0.90f;
+    [Export] public float BaseFlightGravityScale { get; set; } = 0.75f;
+    [Export] public float BaseAirDrag { get; set; } = 0.12f;
+    [Export] public float LateralForceMultiplier { get; set; } = 1.35f;
     [Export] public float MaxBankAngle { get; set; } = 60.0f;
 
     [ExportGroup("Forehand vs Backhand Dynamics")]
-    [Export] public float ForehandTurnTorque { get; set; } = 1.15f;   // Forehand has more aggressive initial torque turnover
-    [Export] public float ForehandFadeBite { get; set; } = 1.12f;     // Forehand hooks harder in low speed fade
-    [Export] public float BackhandGlideBonus { get; set; } = 1.08f;   // Backhand has cleaner RPM glide efficiency
+    [Export] public float ForehandTurnTorque { get; set; } = 1.15f;
+    [Export] public float ForehandFadeBite { get; set; } = 1.12f;
+    [Export] public float BackhandGlideBonus { get; set; } = 1.08f;
 
-    [ExportGroup("Ground Physics & Hardness")]
-    [Export(PropertyHint.Range, "0.0, 1.0, 0.05")] public float SurfaceHardness { get; set; } = 0.5f;
-    [Export] public float SkipThresholdSpeed { get; set; } = 3.5f;
-    [Export] public float SkipMaxAngleDeg { get; set; } = 26.0f;
-    [Export] public float RollerThresholdAngle { get; set; } = 12.0f;
+    [ExportGroup("Physics Material Tuning")]
+    [Export] public float SurfaceFriction { get; set; } = 0.45f;
+    [Export] public float SurfaceBounce { get; set; } = 0.35f;
     [Export] public float DiscRadius { get; set; } = 0.35f;
     [Export] public float DiscThickness { get; set; } = 0.04f;
-
-    [ExportGroup("Wall & Obstacle Physics")]
-    [Export] public float WallBounciness { get; set; } = 0.68f;
-    [Export] public float WallFriction { get; set; } = 0.12f;
 
     [ExportGroup("Ground Indicator & Drop Line")]
     [Export] public bool ShowGroundIndicator { get; set; } = true;
@@ -67,17 +52,18 @@ public partial class DiscFlightController : RigidBody3D
     [Export] public Color GroundShadowColor { get; set; } = new(0.0f, 0.0f, 0.0f, 0.35f);
     [Export] public float GroundLineRadius { get; set; } = 0.016f;
 
-    [ExportGroup("Visual")]
+    [ExportGroup("Nodes")]
     [Export] public Node3D? DiscVisual { get; set; }
+    [Export] public CollisionShape3D? DiscCollisionShape { get; set; }
 
     public bool IsFlying { get; private set; }
     public float FlightProgress { get; private set; }
     public float CurrentBankAngle { get; private set; }
     public FlightPhase CurrentFlightPhase { get; private set; } = FlightPhase.Ready;
-    public GroundState CurrentGroundState => _groundState;
     public ThrowTechnique CurrentTechnique { get; private set; } = ThrowTechnique.RHBH;
     public float SpinSign => GetSpinSign(CurrentTechnique);
     public bool IsForehand => IsForehandTechnique(CurrentTechnique);
+    public ThrowParameters CurrentThrow { get; private set; }
 
     public event System.Action<FlightPhase>? FlightPhaseChanged;
     public event System.Action<float>? HoverAnimationStarted;
@@ -85,17 +71,20 @@ public partial class DiscFlightController : RigidBody3D
 
     private float _initialSpeed;
     private float _flightTime;
+    private float _restTimer;
+    private float _groundTime;
+    private bool _hasTouchedGround;
+    private bool _hasFloorContact;
+    private bool _hasWallContact;
     private Vector3 _startPosition;
     private Quaternion _startRotation;
     private bool _isEndingFlight;
     private Tween? _hoverTween;
-    private GroundState _groundState = GroundState.Settled;
-    private float _groundTimer;
     private float _spinAngle;
     private float _spinRate;
-    private float _wobbleTimer;
     private Vector3 _lastForward = Vector3.Forward;
-    private Vector3 _groundNormal = Vector3.Up;
+    private Vector3 _lastContactNormal = Vector3.Up;
+    private float _lastAppliedBankAngle = 999.0f;
 
     // Ground Drop-Line & Indicator Nodes
     private Node3D? _groundIndicatorRoot;
@@ -130,13 +119,25 @@ public partial class DiscFlightController : RigidBody3D
         _startPosition = GlobalPosition;
         _startRotation = GlobalTransform.Basis.GetRotationQuaternion();
 
+        DiscCollisionShape ??= GetNodeOrNull<CollisionShape3D>("CollisionShape3D");
+
+        ContinuousCd = true;
+        ContactMonitor = true;
+        MaxContactsReported = 6;
+
         AxisLockAngularX = true;
         AxisLockAngularY = true;
         AxisLockAngularZ = true;
 
-        ContactMonitor = true;
-        MaxContactsReported = 4;
-        BodyEntered += OnBodyEntered;
+        PhysicsMaterialOverride = new PhysicsMaterial
+        {
+            Friction = SurfaceFriction,
+            Bounce = SurfaceBounce,
+            Rough = false
+        };
+
+        FreezeMode = FreezeModeEnum.Kinematic;
+        Freeze = true;
 
         if (DiscVisual != null)
         {
@@ -155,6 +156,28 @@ public partial class DiscFlightController : RigidBody3D
         }
     }
 
+    public override void _IntegrateForces(PhysicsDirectBodyState3D state)
+    {
+        _hasFloorContact = false;
+        _hasWallContact = false;
+
+        int count = state.GetContactCount();
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 normal = state.GetContactLocalNormal(i);
+            _lastContactNormal = normal;
+
+            if (normal.Y >= 0.60f)
+            {
+                _hasFloorContact = true;
+            }
+            else
+            {
+                _hasWallContact = true;
+            }
+        }
+    }
+
     public override void _PhysicsProcess(double delta)
     {
         if (!IsFlying || _isEndingFlight)
@@ -165,31 +188,120 @@ public partial class DiscFlightController : RigidBody3D
         float dt = (float)delta;
         _flightTime += dt;
 
-        GetGroundSurfaceInfo(GlobalPosition, out float groundY, out _groundNormal);
-        float minCenterHeight = GetMinCenterHeight(CurrentBankAngle);
-        float groundSurfaceY = groundY + minCenterHeight;
-
-        switch (_groundState)
+        // Safety watchdog: stop after 16 seconds max
+        if (_flightTime > 16.0f)
         {
-            case GroundState.Airborne:
-                ProcessAirborne(dt, groundSurfaceY);
-                break;
-
-            case GroundState.Skipping:
-                ProcessSkipping(dt, groundSurfaceY);
-                break;
-
-            case GroundState.Rolling:
-                ProcessRolling(dt, groundSurfaceY);
-                break;
-
-            case GroundState.Sliding:
-                ProcessSliding(dt, groundSurfaceY);
-                break;
-
-            case GroundState.Settled:
-                break;
+            EndFlight();
+            return;
         }
+
+        // 1. High-speed obstacle & wall collision sweep guard (prevents tunneling through walls)
+        var spaceState = GetWorld3D()?.DirectSpaceState;
+        if (spaceState != null && LinearVelocity.LengthSquared() > 0.5f)
+        {
+            var sweepQuery = PhysicsRayQueryParameters3D.Create(
+                GlobalPosition,
+                GlobalPosition + LinearVelocity * dt * 1.35f
+            );
+            sweepQuery.Exclude = new Godot.Collections.Array<Rid> { GetRid() };
+
+            var hit = spaceState.IntersectRay(sweepQuery);
+            if (hit.Count > 0 && hit.TryGetValue("normal", out var normalVar))
+            {
+                Vector3 hitNormal = normalVar.AsVector3().Normalized();
+                _lastContactNormal = hitNormal;
+
+                if (hitNormal.Y < 0.60f)
+                {
+                    // Hitting a vertical wall or obstacle in the air
+                    Vector3 incomingHoriz = new Vector3(LinearVelocity.X, 0.0f, LinearVelocity.Z);
+                    LinearVelocity = LinearVelocity.Bounce(hitNormal) * SurfaceBounce;
+                    Vector3 outgoingHoriz = new Vector3(LinearVelocity.X, 0.0f, LinearVelocity.Z);
+
+                    if (incomingHoriz.LengthSquared() > 0.01f && outgoingHoriz.LengthSquared() > 0.01f)
+                    {
+                        Vector3 inDir = incomingHoriz.Normalized();
+                        Vector3 outDir = outgoingHoriz.Normalized();
+                        float normalDotIn = inDir.Dot(hitNormal);
+
+                        // Reflect bank angle sign according to bounce deflection, keeping hyzer/anhyzer tilt!
+                        CurrentBankAngle = -CurrentBankAngle * Mathf.Sign(normalDotIn);
+                        _lastForward = outDir;
+                    }
+                    // Walls NEVER mark ground contact. The disc remains in the air!
+                }
+                else
+                {
+                    // Floor / surface impact
+                    _hasTouchedGround = true;
+                    ContinuousCd = false;
+                    GravityScale = 1.0f;
+                }
+            }
+        }
+
+        // Floor contact detection strictly for ground/floor surfaces
+        if (_hasFloorContact)
+        {
+            _hasTouchedGround = true;
+            ContinuousCd = false;
+            GravityScale = 1.0f;
+        }
+
+        if (!_hasTouchedGround)
+        {
+            // --- AIRBORNE AERODYNAMICS ---
+            _restTimer = 0.0f;
+            _groundTime = 0.0f;
+            ApplyAirborneAerodynamics(dt);
+        }
+        else
+        {
+            // --- GROUND / SURFACE INTERACTION ---
+            SetFlightPhase(FlightPhase.Ground);
+            _groundTime += dt;
+
+            float speed = LinearVelocity.Length();
+
+            // Dynamic straightening speed: disc levels out flat as kinetic energy drops
+            float fallRate = Mathf.Lerp(160.0f, 90.0f, Mathf.Clamp(speed / 5.0f, 0.0f, 1.0f));
+            CurrentBankAngle = Mathf.MoveToward(CurrentBankAngle, 0.0f, fallRate * dt);
+            if (Mathf.Abs(CurrentBankAngle) < 1.0f)
+            {
+                CurrentBankAngle = 0.0f;
+            }
+
+            // Spin slows down on surface contact
+            _spinRate = Mathf.MoveToward(_spinRate, 0.0f, 40.0f * dt);
+            _spinAngle += _spinRate * dt;
+
+            // Rest detection: purely based on physical movement stopping in 3D (X, Y, Z)
+            if (speed < 0.18f || Sleeping)
+            {
+                _restTimer += dt;
+                if (_restTimer >= 0.35f)
+                {
+                    EndFlight();
+                    return;
+                }
+            }
+            else
+            {
+                _restTimer = 0.0f;
+            }
+        }
+
+        // Update visual model and collision shape orientation stably
+        Vector3 horizVel = new(LinearVelocity.X, 0.0f, LinearVelocity.Z);
+        Vector3 forward = _lastForward;
+        if (horizVel.LengthSquared() > 0.15f) // Lock direction below 0.38 m/s to eliminate shape micro-turning
+        {
+            forward = horizVel.Normalized();
+            _lastForward = forward;
+        }
+
+        float verticalPitch = _hasTouchedGround ? 0.0f : Mathf.Clamp(LinearVelocity.Y / (horizVel.Length() + 0.1f), -0.5f, 0.5f) * 0.30f;
+        UpdateOrientation(forward, CurrentBankAngle, verticalPitch, dt, _hasTouchedGround ? _lastContactNormal : Vector3.Up);
     }
 
     public void Throw(ThrowParameters parameters)
@@ -197,14 +309,20 @@ public partial class DiscFlightController : RigidBody3D
         _hoverTween?.Kill();
         _hoverTween = null;
         _isEndingFlight = false;
-        _groundState = GroundState.Airborne;
-        _groundTimer = 0.0f;
         _flightTime = 0.0f;
-        _wobbleTimer = 0.0f;
+        _restTimer = 0.0f;
+        _groundTime = 0.0f;
+        _hasTouchedGround = false;
+        _hasFloorContact = false;
+        _hasWallContact = false;
+        _lastAppliedBankAngle = 999.0f;
         CurrentTechnique = parameters.Technique;
+        CurrentThrow = parameters;
 
+        FreezeMode = FreezeModeEnum.Kinematic;
         Freeze = false;
         Sleeping = false;
+        ContinuousCd = true; // High speed CCD while in air
 
         float speed = Mathf.Lerp(
             MinThrowSpeed,
@@ -236,7 +354,7 @@ public partial class DiscFlightController : RigidBody3D
 
         float horizLen = new Vector2(launchDirection.X, launchDirection.Z).Length();
         float initialPitch = Mathf.Atan2(launchDirection.Y, Mathf.Max(0.01f, horizLen));
-        UpdateVisualOrientation(_lastForward, CurrentBankAngle, initialPitch, 0.016f);
+        UpdateOrientation(_lastForward, CurrentBankAngle, initialPitch, 0.016f, Vector3.Up);
     }
 
     public void ResetPosition()
@@ -244,7 +362,6 @@ public partial class DiscFlightController : RigidBody3D
         _hoverTween?.Kill();
         _hoverTween = null;
         _isEndingFlight = false;
-        _groundState = GroundState.Settled;
         SetupNewTurnHover(_startPosition);
     }
 
@@ -253,27 +370,40 @@ public partial class DiscFlightController : RigidBody3D
         _hoverTween?.Kill();
         _hoverTween = null;
         _isEndingFlight = false;
-        _groundState = GroundState.Settled;
-        _groundTimer = 0.0f;
+        _flightTime = 0.0f;
+        _restTimer = 0.0f;
+        _groundTime = 0.0f;
+        _hasTouchedGround = false;
+        _hasFloorContact = false;
+        _hasWallContact = false;
         _spinAngle = 0.0f;
         _spinRate = 0.0f;
-        _flightTime = 0.0f;
-        _wobbleTimer = 0.0f;
+        _lastAppliedBankAngle = 999.0f;
         IsFlying = false;
+
+        FreezeMode = FreezeModeEnum.Kinematic;
         Freeze = true;
         LinearVelocity = Vector3.Zero;
         AngularVelocity = Vector3.Zero;
         GravityScale = 0.0f;
 
-        float groundY = GetGroundHeightAt(basePosition);
-        Vector3 hoverPosition = new(basePosition.X, groundY + HoverHeight, basePosition.Z);
+        Vector3 hoverPosition = new(basePosition.X, basePosition.Y + HoverHeight, basePosition.Z);
 
         GlobalPosition = hoverPosition;
         GlobalTransform = new Transform3D(new Basis(_startRotation), hoverPosition);
         CurrentBankAngle = 0.0f;
 
+        if (DiscCollisionShape != null)
+        {
+            DiscCollisionShape.Position = Vector3.Zero;
+            DiscCollisionShape.Quaternion = Quaternion.Identity;
+            DiscCollisionShape.Transform = Transform3D.Identity;
+        }
+
         if (DiscVisual != null)
         {
+            DiscVisual.Position = Vector3.Zero;
+            DiscVisual.Quaternion = Quaternion.Identity;
             DiscVisual.Transform = Transform3D.Identity;
             DiscVisual.Visible = true;
         }
@@ -284,14 +414,7 @@ public partial class DiscFlightController : RigidBody3D
 
     public Vector3 GetHoverPositionFor(Vector3 position)
     {
-        float groundY = GetGroundHeightAt(position);
-        return new Vector3(position.X, groundY + HoverHeight, position.Z);
-    }
-
-    public float GetMinCenterHeight(float bankAngleDeg)
-    {
-        float bankRad = Mathf.DegToRad(Mathf.Abs(bankAngleDeg));
-        return DiscRadius * Mathf.Sin(bankRad) + (DiscThickness * 0.5f) * Mathf.Cos(bankRad) + 0.003f;
+        return new Vector3(position.X, position.Y + HoverHeight, position.Z);
     }
 
     public float GetRequiredCruiseSpeed()
@@ -304,15 +427,15 @@ public partial class DiscFlightController : RigidBody3D
         float speed = Mathf.Lerp(MinThrowSpeed, MaxThrowSpeed, parameters.Power);
         float cruiseSpeed = GetRequiredCruiseSpeed();
         float speedRatio = speed / Mathf.Max(cruiseSpeed, 1.0f);
-        float spinSign = GetSpinSign(parameters.Technique);
-        bool isForehand = IsForehandTechnique(parameters.Technique);
+        float spinSign = GetSpinSign(CurrentTechnique);
+        bool isForehand = IsForehandTechnique(CurrentTechnique);
 
         float launchWeight = 0.12f;
         float turnWeight = 0.0f;
         float glideWeight = 0.0f;
         float fadeWeight = 0.0f;
 
-        // Smooth continuous turn weight (Forehand gets torque boost)
+        // Turn weight
         float turnMultiplier = isForehand ? ForehandTurnTorque : 1.0f;
         if (speedRatio > 0.82f && DiscTurn < 0.0f)
         {
@@ -320,12 +443,12 @@ public partial class DiscFlightController : RigidBody3D
             turnWeight = Mathf.Clamp(turnPotential * turnPotential * (Mathf.Abs(DiscTurn) / 5.0f) * 0.45f * turnMultiplier, 0.0f, 0.55f);
         }
 
-        // Smooth continuous fade weight (Forehand has sharper fade bite)
+        // Fade weight
         float fadeMultiplier = isForehand ? ForehandFadeBite : 1.0f;
         float fadePotential = Mathf.Clamp((0.80f - speedRatio) / 0.50f, 0.0f, 1.0f);
         fadeWeight = Mathf.Clamp(((DiscFade / 5.0f) * 0.35f + fadePotential * fadePotential * 0.35f) * fadeMultiplier, 0.10f, 0.68f);
 
-        // Smooth glide weight (Backhand gets clean glide bonus)
+        // Glide weight
         float glideBonus = !isForehand ? BackhandGlideBonus : 1.0f;
         glideWeight = Mathf.Clamp((DiscGlide / 7.0f) * 0.45f * glideBonus, 0.15f, 0.52f);
 
@@ -353,344 +476,7 @@ public partial class DiscFlightController : RigidBody3D
         );
     }
 
-    private void ProcessAirborne(float dt, float groundSurfaceY)
-    {
-        if (CheckObstacleCollision(dt))
-        {
-            return;
-        }
-
-        if (GlobalPosition.Y <= groundSurfaceY)
-        {
-            HandleGroundImpact();
-            return;
-        }
-
-        ApplyArcadeFlight(dt);
-        UpdateFlightProgress();
-
-        Vector3 horizVel = new(LinearVelocity.X, 0.0f, LinearVelocity.Z);
-        Vector3 forward = horizVel.LengthSquared() > 0.01f ? horizVel.Normalized() : _lastForward;
-        float verticalPitch = Mathf.Clamp(LinearVelocity.Y / (horizVel.Length() + 0.1f), -0.5f, 0.5f) * 0.35f;
-
-        _spinRate = Mathf.MoveToward(_spinRate, 10.0f, 2.5f * dt);
-        _spinAngle += _spinRate * dt;
-
-        UpdateVisualOrientation(forward, CurrentBankAngle, verticalPitch, dt);
-    }
-
-    private void ProcessSkipping(float dt, float groundSurfaceY)
-    {
-        SetFlightPhase(FlightPhase.Ground);
-
-        if (CheckObstacleCollision(dt))
-        {
-            return;
-        }
-
-        // Full realistic gravity during skip arc
-        LinearVelocity += Vector3.Down * 9.8f * 1.15f * dt;
-        LinearVelocity *= Mathf.Max(0.0f, 1.0f - BaseAirDrag * dt);
-
-        if (GlobalPosition.Y <= groundSurfaceY && LinearVelocity.Y <= 0.0f)
-        {
-            HandleGroundImpact();
-            return;
-        }
-
-        Vector3 horizVel = new(LinearVelocity.X, 0.0f, LinearVelocity.Z);
-        Vector3 forward = horizVel.LengthSquared() > 0.01f ? horizVel.Normalized() : _lastForward;
-        float verticalPitch = Mathf.Clamp(LinearVelocity.Y / (horizVel.Length() + 0.1f), -0.4f, 0.4f) * 0.35f;
-
-        _spinRate = Mathf.MoveToward(_spinRate, 8.0f, 4.0f * dt);
-        _spinAngle += _spinRate * dt;
-
-        UpdateVisualOrientation(forward, CurrentBankAngle, verticalPitch, dt);
-    }
-
-    private void ProcessRolling(float dt, float groundSurfaceY)
-    {
-        SetFlightPhase(FlightPhase.Ground);
-        _groundTimer += dt;
-
-        Vector3 horizVel = new(LinearVelocity.X, 0.0f, LinearVelocity.Z);
-        float currentSpeed = horizVel.Length();
-
-        if (currentSpeed < 0.20f)
-        {
-            _groundState = GroundState.Sliding;
-            return;
-        }
-
-        Vector3 forward = horizVel.Normalized();
-        Vector3 right = forward.Cross(Vector3.Up).Normalized();
-
-        if (CheckObstacleCollision(dt))
-        {
-            return;
-        }
-
-        // 1. Natural Wheel-Curvature: rolling disc arcs in direction of rim tilt (sharper curl as it leans)
-        float leanFactor = Mathf.Sin(Mathf.DegToRad(CurrentBankAngle));
-        Vector3 curveAcc = right * leanFactor * (6.5f + currentSpeed * 0.35f);
-        LinearVelocity += curveAcc * dt;
-
-        // 2. Rolling Resistance (smooth arcade ground roll)
-        float rollFriction = (0.09f + 0.14f * (1.0f - SurfaceHardness)) * 9.8f;
-        horizVel = new Vector3(LinearVelocity.X, 0.0f, LinearVelocity.Z);
-        currentSpeed = Mathf.MoveToward(horizVel.Length(), 0.0f, rollFriction * dt);
-        LinearVelocity = horizVel.Normalized() * currentSpeed;
-
-        // 3. Conformance to terrain surface
-        GlobalPosition += LinearVelocity * dt;
-        GlobalPosition = new Vector3(GlobalPosition.X, groundSurfaceY, GlobalPosition.Z);
-
-        // 4. Gyroscopic Stability & Precession Wobble
-        // While rolling fast, the disc maintains its upright wheel angle. As it slows, it begins to wobble and fall.
-        float visualBank = CurrentBankAngle;
-        if (currentSpeed < 3.0f)
-        {
-            _wobbleTimer += dt * 20.0f;
-            float wobbleAmp = Mathf.Clamp((3.0f - currentSpeed) * 3.5f, 0.0f, 18.0f);
-            visualBank += Mathf.Sin(_wobbleTimer) * wobbleAmp;
-        }
-
-        // Decay bank angle towards flat ground as rolling speed bleeds off
-        float decaySpeed = 4.0f + Mathf.Max(0.0f, 3.0f - currentSpeed) * 16.0f;
-        CurrentBankAngle = Mathf.MoveToward(CurrentBankAngle, 0.0f, decaySpeed * dt);
-
-        // 5. Spin rate matching wheel ground roll
-        _spinRate = Mathf.MoveToward(_spinRate, (currentSpeed / DiscRadius), 25.0f * dt);
-        _spinAngle += _spinRate * dt;
-
-        UpdateVisualOrientation(forward, visualBank, 0.0f, dt);
-
-        if (Mathf.Abs(CurrentBankAngle) < 2.0f || currentSpeed < 0.25f || _groundTimer > 6.0f)
-        {
-            _groundState = GroundState.Sliding;
-        }
-    }
-
-    private void ProcessSliding(float dt, float groundSurfaceY)
-    {
-        SetFlightPhase(FlightPhase.Ground);
-        _groundTimer += dt;
-
-        Vector3 horizVel = new(LinearVelocity.X, 0.0f, LinearVelocity.Z);
-        float currentSpeed = horizVel.Length();
-
-        // Level out tilt smoothly to lie flat on ground
-        CurrentBankAngle = Mathf.MoveToward(CurrentBankAngle, 0.0f, 45.0f * dt);
-
-        // Realistic grass sliding friction
-        float slideFriction = (0.24f + 0.28f * (1.0f - SurfaceHardness)) * 9.8f;
-        currentSpeed = Mathf.MoveToward(currentSpeed, 0.0f, slideFriction * dt);
-
-        Vector3 forward = horizVel.LengthSquared() > 0.001f ? horizVel.Normalized() : _lastForward;
-        LinearVelocity = forward * currentSpeed;
-
-        if (CheckObstacleCollision(dt))
-        {
-            return;
-        }
-
-        // Step position manually on ground
-        GlobalPosition += LinearVelocity * dt;
-        GlobalPosition = new Vector3(GlobalPosition.X, groundSurfaceY, GlobalPosition.Z);
-
-        // Spin slows down on grass
-        _spinRate = Mathf.MoveToward(_spinRate, 0.0f, 20.0f * dt);
-        _spinAngle += _spinRate * dt;
-
-        UpdateVisualOrientation(forward, CurrentBankAngle, 0.0f, dt);
-
-        if (currentSpeed < 0.04f && Mathf.Abs(CurrentBankAngle) < 1.0f)
-        {
-            EndFlight();
-        }
-        else if (_groundTimer > 3.0f)
-        {
-            EndFlight();
-        }
-    }
-
-    private void HandleGroundImpact()
-    {
-        GetGroundSurfaceInfo(GlobalPosition, out float groundY, out _groundNormal);
-        float minCenterHeight = GetMinCenterHeight(CurrentBankAngle);
-        float groundSurfaceY = groundY + minCenterHeight;
-        GlobalPosition = new Vector3(GlobalPosition.X, groundSurfaceY, GlobalPosition.Z);
-
-        float downwardSpeed = -LinearVelocity.Y;
-        Vector3 horizVel = new(LinearVelocity.X, 0.0f, LinearVelocity.Z);
-        float horizSpeed = horizVel.Length();
-
-        // Calculate impact descent angle relative to horizontal
-        float descentAngleDeg = Mathf.RadToDeg(Mathf.Atan2(downwardSpeed, Mathf.Max(0.01f, horizSpeed)));
-        float absBank = Mathf.Abs(CurrentBankAngle);
-
-        // 1. SIDEWAYS ROLLER (Any disc landing on its side edge at >= 12° banks into a roll)
-        if (absBank >= RollerThresholdAngle && absBank <= 88.0f && horizSpeed > 0.8f)
-        {
-            _groundState = GroundState.Rolling;
-            Freeze = true;
-            _wobbleTimer = 0.0f;
-            _groundTimer = 0.0f;
-
-            // Retain high forward rolling momentum
-            float rollRetention = 0.88f + 0.10f * SurfaceHardness;
-            LinearVelocity = horizVel * rollRetention;
-            return;
-        }
-
-        // 2. STEEP SPIKE / LAWN DART IMPACT (Flat disc crashing steeply down)
-        if (descentAngleDeg > 42.0f || downwardSpeed > 8.0f)
-        {
-            _groundState = GroundState.Sliding;
-            Freeze = true;
-
-            float impactDamp = 0.20f + 0.18f * SurfaceHardness;
-            LinearVelocity = horizVel * impactDamp;
-            CurrentBankAngle *= 0.35f;
-            return;
-        }
-
-        // 3. SKIP / FLARE (Low-angle flat disc skipping off the turf)
-        if (descentAngleDeg <= SkipMaxAngleDeg && horizSpeed >= SkipThresholdSpeed)
-        {
-            _groundState = GroundState.Skipping;
-            Freeze = false;
-
-            float reboundY = Mathf.Max(1.0f, downwardSpeed * (0.45f + 0.40f * SurfaceHardness));
-            float horizRetention = 0.80f + 0.14f * SurfaceHardness;
-
-            // Flare kick in the spin direction (Forehand has extra skip flare)
-            float spinSign = GetSpinSign(CurrentTechnique);
-            float flareMultiplier = IsForehand ? ForehandFadeBite : 1.0f;
-            CurrentBankAngle = Mathf.Clamp(CurrentBankAngle * 0.75f - (spinSign * DiscFade * 2.0f * flareMultiplier), -MaxBankAngle, MaxBankAngle);
-
-            LinearVelocity = new Vector3(
-                horizVel.X * horizRetention,
-                reboundY,
-                horizVel.Z * horizRetention
-            );
-            return;
-        }
-
-        // 4. STANDARD GRASS SLIDE
-        _groundState = GroundState.Sliding;
-        Freeze = true;
-        float slideRetention = 0.55f + 0.30f * SurfaceHardness;
-        LinearVelocity = horizVel * slideRetention;
-    }
-
-    private bool CheckObstacleCollision(float dt)
-    {
-        var spaceState = GetWorld3D()?.DirectSpaceState;
-        if (spaceState == null)
-        {
-            return false;
-        }
-
-        Vector3 moveStep = LinearVelocity * dt;
-        float stepLen = moveStep.Length();
-        if (stepLen < 0.0001f)
-        {
-            return false;
-        }
-
-        Vector3 moveDir = moveStep.Normalized();
-        Vector3 rightSide = moveDir.Cross(Vector3.Up).Normalized() * (DiscRadius * 0.85f);
-
-        // Test Center ray, plus Left and Right Rim offset rays
-        Vector3[] testOrigins = new Vector3[]
-        {
-            GlobalPosition,
-            GlobalPosition + rightSide,
-            GlobalPosition - rightSide
-        };
-
-        foreach (var origin in testOrigins)
-        {
-            Vector3 to = origin + moveStep + moveDir * 0.15f;
-            var query = PhysicsRayQueryParameters3D.Create(origin, to);
-            query.Exclude = new Godot.Collections.Array<Rid> { GetRid() };
-
-            var result = spaceState.IntersectRay(query);
-            if (result.Count > 0 && result.TryGetValue("normal", out var normalVar))
-            {
-                Vector3 normal = normalVar.AsVector3();
-                if (normal.Y < 0.65f) // Wall / obstacle surface
-                {
-                    if (result.TryGetValue("position", out var hitPosVar))
-                    {
-                        Vector3 hitPos = hitPosVar.AsVector3();
-                        Vector3 offsetFromCenter = origin - GlobalPosition;
-                        GlobalPosition = hitPos - offsetFromCenter + normal * (DiscRadius + 0.04f);
-                    }
-                    HandleWallImpact(normal);
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private void HandleWallImpact(Vector3 wallNormal)
-    {
-        Vector3 incomingVel = LinearVelocity;
-        float incomingSpeed = incomingVel.Length();
-
-        if (incomingSpeed < 0.1f)
-        {
-            return;
-        }
-
-        wallNormal = wallNormal.Normalized();
-
-        // Dot product: normal velocity component
-        float normalSpeed = incomingVel.Dot(wallNormal);
-        if (normalSpeed >= 0.0f)
-        {
-            // Already moving away from or parallel to the wall
-            return;
-        }
-
-        Vector3 normalVel = wallNormal * normalSpeed;
-        Vector3 tangentVel = incomingVel - normalVel;
-
-        // Normal restitution (bounciness)
-        float restitution = WallBounciness * (0.80f + 0.20f * SurfaceHardness);
-
-        // Tangential friction (glancing retention)
-        // For glancing touches (small normalSpeed), disc retains most of its tangential forward momentum
-        float glanceRatio = Mathf.Clamp(Mathf.Abs(normalSpeed) / incomingSpeed, 0.0f, 1.0f); // 0 = grazing, 1 = head-on
-        float tangentialRetention = Mathf.Clamp(1.0f - WallFriction * (0.25f + 0.75f * glanceRatio), 0.75f, 0.98f);
-
-        Vector3 reflectedNormalVel = -normalVel * restitution;
-        Vector3 reflectedTangentVel = tangentVel * tangentialRetention;
-
-        LinearVelocity = reflectedTangentVel + reflectedNormalVel;
-
-        // Smooth bank damping without violent inversion on glancing contacts
-        CurrentBankAngle = Mathf.Clamp(CurrentBankAngle * (0.60f + 0.35f * (1.0f - glanceRatio)), -MaxBankAngle, MaxBankAngle);
-
-        Vector3 horizBounce = new(LinearVelocity.X, 0.0f, LinearVelocity.Z);
-        if (horizBounce.LengthSquared() > 0.001f)
-        {
-            _lastForward = horizBounce.Normalized();
-        }
-
-        _groundState = GroundState.Airborne;
-        Freeze = false;
-        Sleeping = false;
-        GravityScale = BaseFlightGravityScale;
-
-        UpdateVisualOrientation(_lastForward, CurrentBankAngle, 0.0f, 0.016f);
-    }
-
-    private void ApplyArcadeFlight(float dt)
+    private void ApplyAirborneAerodynamics(float dt)
     {
         Vector3 horizVel = new(LinearVelocity.X, 0.0f, LinearVelocity.Z);
         float currentSpeed = horizVel.Length();
@@ -708,7 +494,7 @@ public partial class DiscFlightController : RigidBody3D
         float spinSign = GetSpinSign(CurrentTechnique);
         bool isForehand = IsForehandTechnique(CurrentTechnique);
 
-        // 1. Continuous Turn & Fade Dynamics with Forehand/Backhand Character
+        // 1. Aerodynamic Turn (High Speed) & Fade (Low Speed)
         float turnFactor = 0.0f;
         float turnRate = 0.0f;
         float turnTorque = isForehand ? ForehandTurnTorque : 1.0f;
@@ -736,7 +522,7 @@ public partial class DiscFlightController : RigidBody3D
             CurrentBankAngle = Mathf.MoveToward(CurrentBankAngle, 0.0f, 2.0f * glideWeight * dt);
         }
 
-        // Apply net smooth aerodynamic roll with Spin Sign
+        // Net aerodynamic roll
         CurrentBankAngle += spinSign * (turnRate - fadeRate) * dt;
         CurrentBankAngle = Mathf.Clamp(CurrentBankAngle, -MaxBankAngle, MaxBankAngle);
 
@@ -763,28 +549,27 @@ public partial class DiscFlightController : RigidBody3D
         Vector3 lateralAcc = right * Mathf.Sin(bankRad) * currentSpeed * LateralForceMultiplier;
         LinearVelocity += lateralAcc * dt;
 
-        // 4. Continuous Lift & Smooth Fade Sink (Backhand gets clean glide bonus)
+        // 4. Aerodynamic Lift & Fade Sink
         float glideBonus = !isForehand ? BackhandGlideBonus : 1.0f;
-        float baseLift = currentSpeed * (DiscGlide * 0.16f * GlideMultiplier * glideBonus) * 0.05f;
+        float baseLift = currentSpeed * (DiscGlide * 0.12f * GlideMultiplier * glideBonus) * 0.04f;
         float currentVerticalVel = LinearVelocity.Y;
 
         float bankLiftDamping = Mathf.Cos(bankRad);
-        float effectiveLift = baseLift * Mathf.Max(0.20f, bankLiftDamping);
+        float effectiveLift = baseLift * Mathf.Max(0.15f, bankLiftDamping);
 
-        if (currentVerticalVel < 1.5f)
+        if (currentVerticalVel < 0.8f)
         {
-            float liftForce = Mathf.Min(effectiveLift, (1.5f - currentVerticalVel) * 3.0f);
+            float liftForce = Mathf.Min(effectiveLift, (0.8f - currentVerticalVel) * 2.0f);
             LinearVelocity += Vector3.Up * liftForce * dt;
         }
 
-        // Smooth gradual sink during fade
         if (fadeFactor > 0.02f)
         {
-            LinearVelocity += Vector3.Down * (DiscFade * 0.65f * fadeFactor * fadeBite) * dt;
+            LinearVelocity += Vector3.Down * (DiscFade * 0.85f * fadeFactor * fadeBite) * dt;
         }
 
         // 5. Air Drag
-        float inducedDragFactor = 1.0f + Mathf.Abs(Mathf.Sin(bankRad)) * 0.5f;
+        float inducedDragFactor = 1.0f + Mathf.Abs(Mathf.Sin(bankRad)) * 0.6f;
         float effectiveDrag = BaseAirDrag * inducedDragFactor;
         float dragFactor = Mathf.Max(0.0f, 1.0f - effectiveDrag * dt);
 
@@ -793,19 +578,16 @@ public partial class DiscFlightController : RigidBody3D
             LinearVelocity.Y,
             LinearVelocity.Z * dragFactor
         );
-    }
 
-    private void UpdateFlightProgress()
-    {
-        float currentSpeed = LinearVelocity.Length();
+        // Spin Decay
+        _spinRate = Mathf.MoveToward(_spinRate, 10.0f, 2.5f * dt);
+        _spinAngle += _spinRate * dt;
 
-        if (_initialSpeed <= 0.0f)
+        // Flight progress
+        if (_initialSpeed > 0.0f)
         {
-            FlightProgress = 1.0f;
-            return;
+            FlightProgress = 1.0f - Mathf.Clamp(currentSpeed / _initialSpeed, 0.0f, 1.0f);
         }
-
-        FlightProgress = 1.0f - Mathf.Clamp(currentSpeed / _initialSpeed, 0.0f, 1.0f);
     }
 
     private void SetFlightPhase(FlightPhase newPhase)
@@ -817,9 +599,9 @@ public partial class DiscFlightController : RigidBody3D
         }
     }
 
-    private void UpdateVisualOrientation(Vector3 forward, float bankAngle, float pitchAngle, float dt)
+    private void UpdateOrientation(Vector3 forward, float bankAngle, float pitchAngle, float dt, Vector3 surfaceNormal)
     {
-        if (DiscVisual == null)
+        if (DiscVisual == null && DiscCollisionShape == null)
         {
             return;
         }
@@ -833,71 +615,42 @@ public partial class DiscFlightController : RigidBody3D
             _lastForward = forward.Normalized();
         }
 
-        Vector3 right = _lastForward.Cross(Vector3.Up).Normalized();
+        Vector3 normalUp = surfaceNormal.Normalized();
+        Vector3 right = _lastForward.Cross(normalUp).Normalized();
         if (right.LengthSquared() < 0.001f)
         {
             right = Vector3.Right;
         }
         Vector3 up = right.Cross(_lastForward).Normalized();
 
-        // 1. Base alignment with travel direction (X=right, Y=up, Z=-forward)
-        Basis basis = new(right, up, -_lastForward);
+        // 1. Base alignment with travel direction
+        Basis baseBasis = new(right, up, -_lastForward);
 
-        // 2. Bank tilt (roll around forward travel vector _lastForward)
-        basis = basis.Rotated(_lastForward, Mathf.DegToRad(bankAngle));
+        // 2. Bank tilt (roll around forward travel vector)
+        Basis tiltedBasis = baseBasis.Rotated(_lastForward, Mathf.DegToRad(bankAngle));
 
-        // 3. Pitch along flight angle (pitch around local right axis)
+        // 3. Pitch along flight angle
         if (Mathf.Abs(pitchAngle) > 0.001f)
         {
-            basis = basis.Rotated(right, pitchAngle);
+            tiltedBasis = tiltedBasis.Rotated(right, pitchAngle);
         }
 
-        // 4. Spin around disc face normal (local Y axis) with spin sign
-        float spinSign = GetSpinSign(CurrentTechnique);
-        basis = basis.Rotated(basis.Y, spinSign * _spinAngle);
-
-        DiscVisual.GlobalBasis = basis;
-    }
-
-    private void OnBodyEntered(Node body)
-    {
-        if (!IsFlying || _isEndingFlight)
+        // Only update physical collision shape if bank angle changed noticeably (prevents micro-jitter pushes against floor)
+        if (DiscCollisionShape != null)
         {
-            return;
-        }
-
-        GetGroundSurfaceInfo(GlobalPosition, out float groundY, out _groundNormal);
-        float minCenterHeight = GetMinCenterHeight(CurrentBankAngle);
-        float groundSurfaceY = groundY + minCenterHeight;
-
-        // Only handle ground impact if we are near the terrain and contact is facing upward
-        if (GlobalPosition.Y <= groundSurfaceY + 0.15f && _groundNormal.Y >= 0.55f)
-        {
-            if (_groundState == GroundState.Airborne || _groundState == GroundState.Skipping)
+            if (Mathf.Abs(bankAngle - _lastAppliedBankAngle) > 0.4f || !_hasTouchedGround)
             {
-                HandleGroundImpact();
-                return;
+                DiscCollisionShape.GlobalBasis = tiltedBasis;
+                _lastAppliedBankAngle = bankAngle;
             }
         }
 
-        // Check if collision was with a vertical wall/obstacle
-        var spaceState = GetWorld3D()?.DirectSpaceState;
-        if (spaceState != null && LinearVelocity.LengthSquared() > 0.01f)
+        // Apply tilted basis + spin to DiscVisual
+        if (DiscVisual != null)
         {
-            var query = PhysicsRayQueryParameters3D.Create(
-                GlobalPosition - LinearVelocity.Normalized() * 0.15f,
-                GlobalPosition + LinearVelocity.Normalized() * (DiscRadius + 0.25f)
-            );
-            query.Exclude = new Godot.Collections.Array<Rid> { GetRid() };
-            var result = spaceState.IntersectRay(query);
-            if (result.Count > 0 && result.TryGetValue("normal", out var normalVar))
-            {
-                Vector3 normal = normalVar.AsVector3();
-                if (normal.Y < 0.65f)
-                {
-                    HandleWallImpact(normal);
-                }
-            }
+            float spinSign = GetSpinSign(CurrentTechnique);
+            Basis visualBasis = tiltedBasis.Rotated(tiltedBasis.Y, spinSign * _spinAngle);
+            DiscVisual.GlobalBasis = visualBasis;
         }
     }
 
@@ -909,100 +662,118 @@ public partial class DiscFlightController : RigidBody3D
         }
 
         _isEndingFlight = true;
-        _groundState = GroundState.Settled;
         SetFlightPhase(FlightPhase.Settled);
 
+        FreezeMode = FreezeModeEnum.Kinematic;
         Freeze = true;
         LinearVelocity = Vector3.Zero;
         AngularVelocity = Vector3.Zero;
         GravityScale = 0.0f;
 
-        Vector3 groundPos = GlobalPosition;
-        float groundY = GetGroundHeightAt(groundPos);
-        GlobalPosition = new Vector3(groundPos.X, groundY + DiscThickness * 0.5f + 0.003f, groundPos.Z);
-
-        Vector3 hoverPosition = new(groundPos.X, groundY + HoverHeight, groundPos.Z);
+        Vector3 restingPos = GlobalPosition;
+        Vector3 hoverPosition = restingPos + Vector3.Up * HoverHeight;
         Basis targetBasis = new(_startRotation);
+
+        CurrentBankAngle = 0.0f;
+        UpdateOrientation(_lastForward, 0.0f, 0.0f, 0.016f, _lastContactNormal);
 
         _hoverTween?.Kill();
         _hoverTween = CreateTween();
         _hoverTween.SetProcessMode(Tween.TweenProcessMode.Physics);
 
-        // Settle on the ground for a second before animating to hover
-        _hoverTween.TweenInterval(SettleDelay);
+        // 1. Rest naturally on the surface where it stopped for SettleDelay before animating to hover
+        _hoverTween.TweenInterval((double)SettleDelay);
 
         _hoverTween.TweenCallback(Callable.From(() =>
         {
             HoverAnimationStarted?.Invoke(HoverAnimationDuration);
         }));
 
-        // Smoothly lift disc to hover height
-        _hoverTween.TweenProperty(this, "global_position", hoverPosition, HoverAnimationDuration)
+        // 2. Tween smoothly straight up to hover height
+        _hoverTween.TweenProperty(this, "global_position", hoverPosition, (double)HoverAnimationDuration)
             .SetTrans(Tween.TransitionType.Cubic)
             .SetEase(Tween.EaseType.InOut);
 
         if (DiscVisual != null)
         {
-            _hoverTween.Parallel()
-                .TweenProperty(DiscVisual, "transform", Transform3D.Identity, HoverAnimationDuration)
+            _hoverTween.Parallel().TweenProperty(DiscVisual, "position", Vector3.Zero, (double)HoverAnimationDuration)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.InOut);
+
+            _hoverTween.Parallel().TweenProperty(DiscVisual, "quaternion", Quaternion.Identity, (double)HoverAnimationDuration)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.InOut);
+        }
+
+        if (DiscCollisionShape != null)
+        {
+            _hoverTween.Parallel().TweenProperty(DiscCollisionShape, "position", Vector3.Zero, (double)HoverAnimationDuration)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.InOut);
+
+            _hoverTween.Parallel().TweenProperty(DiscCollisionShape, "quaternion", Quaternion.Identity, (double)HoverAnimationDuration)
                 .SetTrans(Tween.TransitionType.Cubic)
                 .SetEase(Tween.EaseType.InOut);
         }
 
         _hoverTween.TweenCallback(Callable.From(() =>
         {
-            GlobalTransform = new Transform3D(targetBasis, hoverPosition);
-            CurrentBankAngle = 0.0f;
-            _spinAngle = 0.0f;
-            _spinRate = 0.0f;
-
-            if (DiscVisual != null)
-            {
-                DiscVisual.Transform = Transform3D.Identity;
-            }
-
-            _isEndingFlight = false;
-            IsFlying = false;
-            SetFlightPhase(FlightPhase.Ready);
-            NewTurnStarted?.Invoke();
+            FinishEndFlight(hoverPosition, targetBasis);
         }));
     }
 
-    public void GetGroundSurfaceInfo(Vector3 position, out float groundY, out Vector3 groundNormal)
+    private void FinishEndFlight(Vector3 hoverPosition, Basis targetBasis)
     {
-        groundY = 0.0f;
-        groundNormal = Vector3.Up;
+        GlobalPosition = hoverPosition;
+        GlobalTransform = new Transform3D(targetBasis, hoverPosition);
+        CurrentBankAngle = 0.0f;
+        _spinAngle = 0.0f;
+        _spinRate = 0.0f;
+        _hasTouchedGround = false;
+        _hasFloorContact = false;
+        _hasWallContact = false;
 
-        var directSpaceState = GetWorld3D()?.DirectSpaceState;
-        if (directSpaceState == null)
+        if (DiscCollisionShape != null)
         {
-            return;
+            DiscCollisionShape.Position = Vector3.Zero;
+            DiscCollisionShape.Quaternion = Quaternion.Identity;
+            DiscCollisionShape.Transform = Transform3D.Identity;
         }
 
-        var query = PhysicsRayQueryParameters3D.Create(
-            position + Vector3.Up * 20.0f,
-            position + Vector3.Down * 100.0f
-        );
-        query.Exclude = new Godot.Collections.Array<Rid> { GetRid() };
-
-        var result = directSpaceState.IntersectRay(query);
-        if (result.Count > 0)
+        if (DiscVisual != null)
         {
-            if (result.TryGetValue("position", out var hitPosVariant))
-            {
-                groundY = hitPosVariant.AsVector3().Y;
-            }
-            if (result.TryGetValue("normal", out var normalVariant))
-            {
-                groundNormal = normalVariant.AsVector3().Normalized();
-            }
+            DiscVisual.Position = Vector3.Zero;
+            DiscVisual.Quaternion = Quaternion.Identity;
+            DiscVisual.Transform = Transform3D.Identity;
         }
+
+        _isEndingFlight = false;
+        IsFlying = false;
+        SetFlightPhase(FlightPhase.Ready);
+        NewTurnStarted?.Invoke();
     }
 
     public float GetGroundHeightAt(Vector3 position)
     {
-        GetGroundSurfaceInfo(position, out float groundY, out _);
-        return groundY;
+        var directSpaceState = GetWorld3D()?.DirectSpaceState;
+        if (directSpaceState == null)
+        {
+            return position.Y;
+        }
+
+        var query = PhysicsRayQueryParameters3D.Create(
+            position + Vector3.Up * 1.0f,
+            position + Vector3.Down * 20.0f
+        );
+        query.Exclude = new Godot.Collections.Array<Rid> { GetRid() };
+
+        var result = directSpaceState.IntersectRay(query);
+        if (result.Count > 0 && result.TryGetValue("position", out var hitPosVariant))
+        {
+            return hitPosVariant.AsVector3().Y;
+        }
+
+        return position.Y;
     }
 
     private void BuildGroundIndicator()
@@ -1100,7 +871,7 @@ public partial class DiscFlightController : RigidBody3D
         float altitude = discPos.Y - (groundY + DiscThickness * 0.5f);
 
         // Hide when settled flat on ground
-        if (altitude < 0.05f || (_groundState == GroundState.Settled && !_isEndingFlight && CurrentFlightPhase != FlightPhase.Ready))
+        if (altitude < 0.05f || (!IsFlying && CurrentFlightPhase != FlightPhase.Ready))
         {
             _groundIndicatorRoot.Visible = false;
             return;
@@ -1108,12 +879,10 @@ public partial class DiscFlightController : RigidBody3D
 
         _groundIndicatorRoot.Visible = true;
 
-        // Position ground target ring & shadow flat on terrain
         Vector3 groundCenter = new(discPos.X, groundY + 0.012f, discPos.Z);
         _groundRingInstance.GlobalPosition = groundCenter;
         _groundShadowInstance.GlobalPosition = groundCenter;
 
-        // Update vertical drop line height and center
         float lineHeight = Mathf.Max(0.01f, discPos.Y - groundY);
         _groundLineMesh.Height = lineHeight;
         _groundLineInstance.GlobalPosition = new Vector3(discPos.X, groundY + lineHeight * 0.5f, discPos.Z);

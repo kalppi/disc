@@ -393,11 +393,6 @@ public partial class ThrowController : Node
         );
 
         ThrowRequested?.Invoke(parameters);
-
-        if (ResetPowerOnNewTurn)
-        {
-            ResetPowerToStanceBaseline();
-        }
     }
 
     private void OnNewTurnStarted()

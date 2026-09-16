@@ -92,7 +92,7 @@ ThrowController = NodePath("../ThrowController")
 CameraController = NodePath("../CameraController")
 
 [node name="Cube" parent="." unique_id=1185660882 instance=ExtResource("6_i5arm")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.596628, 5.108036, -27.817432)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.597, 5, -27.817)
 
 [node name="Cube2" parent="." unique_id=427968083 instance=ExtResource("6_i5arm")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23.952253, 5.108036, -27.817432)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23.952, 5, -27.817)

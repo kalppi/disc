@@ -327,7 +327,9 @@ public partial class FlightPhaseUI : CanvasLayer
     private void UpdateVisuals(float dt)
     {
         // 1. Update 4 Style Pills
-        ThrowTechnique technique = ThrowController!.Technique;
+        ThrowTechnique technique = (Disc!.IsFlying && Disc.CurrentThrow.Direction != Vector3.Zero)
+            ? Disc.CurrentTechnique
+            : ThrowController!.Technique;
         float spinSign = DiscFlightController.GetSpinSign(technique);
 
         UpdatePillStyle(_cardRHBH, technique == ThrowTechnique.RHBH, new Color(0.20f, 0.85f, 1.0f));
@@ -336,18 +338,20 @@ public partial class FlightPhaseUI : CanvasLayer
         UpdatePillStyle(_cardLHFH, technique == ThrowTechnique.LHFH, new Color(0.20f, 0.85f, 1.0f));
 
         // 2. Update Flight Numbers Header
-        _ratingSpeedLabel.Text = $" {Disc!.DiscSpeed:F0} ";
+        _ratingSpeedLabel.Text = $" {Disc.DiscSpeed:F0} ";
         _ratingGlideLabel.Text = $" {Disc.DiscGlide:F0} ";
         _ratingTurnLabel.Text = $" {Disc.DiscTurn:+0.0;-0.0;0.0} ";
         _ratingFadeLabel.Text = $" {Disc.DiscFade:F1} ";
 
         // 3. Query Flight Tendency
-        var throwParams = new ThrowParameters(
-            ThrowController.Direction,
-            ThrowController.Power,
-            ThrowController.ReleaseAngle,
-            technique
-        );
+        var throwParams = (Disc.IsFlying && Disc.CurrentThrow.Direction != Vector3.Zero)
+            ? Disc.CurrentThrow
+            : new ThrowParameters(
+                ThrowController!.Direction,
+                ThrowController.Power,
+                ThrowController.ReleaseAngle,
+                technique
+            );
         var tendency = Disc.EstimateFlightTendency(throwParams);
 
         // 4. Update Segment Widths
@@ -371,10 +375,13 @@ public partial class FlightPhaseUI : CanvasLayer
 
         // 6. Update Status Text & Badge
         _livePhaseBadge.Text = $" {Disc.CurrentFlightPhase.ToString().ToUpper()} ";
-        _powerLabel.Text = $"Pwr: {ThrowController.Power * 100.0f:F0}%";
+        _powerLabel.Text = $"Pwr: {throwParams.Power * 100.0f:F0}%";
 
         // Pitch Readout
-        float pitch = ThrowController.Pitch;
+        float pitch = (Disc.IsFlying && Disc.CurrentThrow.Direction != Vector3.Zero)
+            ? Mathf.RadToDeg(Mathf.Atan2(throwParams.Direction.Y, new Vector2(throwParams.Direction.X, throwParams.Direction.Z).Length()))
+            : ThrowController!.Pitch;
+
         if (Mathf.Abs(pitch) < 0.5f)
         {
             _pitchLabel.Text = "0° Level";
@@ -392,7 +399,7 @@ public partial class FlightPhaseUI : CanvasLayer
         }
 
         // Release Roll Angle Readout
-        float releaseAngle = ThrowController.ReleaseAngle;
+        float releaseAngle = throwParams.ReleaseAngle;
         if (Mathf.Abs(releaseAngle) < 1.0f)
         {
             _angleLabel.Text = "Flat";

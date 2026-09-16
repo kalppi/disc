@@ -174,8 +174,6 @@ public partial class CameraController : Node3D
 
         if (!ResetCameraOnFreeLookEnd)
         {
-            // Do NOT change throw direction, and do NOT reset camera position!
-            // Camera remains positioned at its current surveyed viewpoint.
             _cameraPosition = Camera.GlobalPosition;
             return;
         }
@@ -185,20 +183,36 @@ public partial class CameraController : Node3D
         _camPitch = ThrowController.Pitch;
         Transform3D targetTransform = GetOrbitTransform(Disc.GlobalPosition, _camYaw, _camPitch);
 
+        Vector3 startPos = Camera.GlobalPosition;
+        Quaternion startRot = Camera.GlobalBasis.GetRotationQuaternion();
+        Vector3 endPos = targetTransform.Origin;
+        Quaternion endRot = targetTransform.Basis.GetRotationQuaternion();
+
         _cameraTween?.Kill();
         _cameraTween = CreateTween();
         _cameraTween.SetProcessMode(Tween.TweenProcessMode.Physics);
         _isTweeningToAim = true;
 
-        _cameraTween.TweenProperty(Camera, "global_transform", targetTransform, FreeLookReturnDuration)
-            .SetTrans(Tween.TransitionType.Cubic)
-            .SetEase(Tween.EaseType.Out);
+        _cameraTween.TweenMethod(Callable.From((double t) =>
+        {
+            float f = (float)t;
+            if (Camera != null)
+            {
+                Camera.GlobalPosition = startPos.Lerp(endPos, f);
+                Camera.GlobalBasis = new Basis(startRot.Slerp(endRot, f));
+                _cameraPosition = Camera.GlobalPosition;
+            }
+        }), 0.0, 1.0, (double)FreeLookReturnDuration)
+        .SetTrans(Tween.TransitionType.Cubic)
+        .SetEase(Tween.EaseType.Out);
 
         _cameraTween.TweenCallback(Callable.From(() =>
         {
             _isTweeningToAim = false;
             if (Camera != null)
             {
+                Camera.GlobalPosition = targetTransform.Origin;
+                Camera.GlobalBasis = targetTransform.Basis;
                 _cameraPosition = Camera.GlobalPosition;
             }
         }));
@@ -240,20 +254,36 @@ public partial class CameraController : Node3D
         Vector3 hoverPos = Disc.GetHoverPositionFor(Disc.GlobalPosition);
         Transform3D targetTransform = GetOrbitTransform(hoverPos, _camYaw, _camPitch);
 
+        Vector3 startPos = Camera.GlobalPosition;
+        Quaternion startRot = Camera.GlobalBasis.GetRotationQuaternion();
+        Vector3 endPos = targetTransform.Origin;
+        Quaternion endRot = targetTransform.Basis.GetRotationQuaternion();
+
         _cameraTween?.Kill();
         _cameraTween = CreateTween();
         _cameraTween.SetProcessMode(Tween.TweenProcessMode.Physics);
         _isTweeningToAim = true;
 
-        _cameraTween.TweenProperty(Camera, "global_transform", targetTransform, duration)
-            .SetTrans(Tween.TransitionType.Cubic)
-            .SetEase(Tween.EaseType.InOut);
+        _cameraTween.TweenMethod(Callable.From((double t) =>
+        {
+            float f = (float)t;
+            if (Camera != null)
+            {
+                Camera.GlobalPosition = startPos.Lerp(endPos, f);
+                Camera.GlobalBasis = new Basis(startRot.Slerp(endRot, f));
+                _cameraPosition = Camera.GlobalPosition;
+            }
+        }), 0.0, 1.0, (double)duration)
+        .SetTrans(Tween.TransitionType.Cubic)
+        .SetEase(Tween.EaseType.InOut);
 
         _cameraTween.TweenCallback(Callable.From(() =>
         {
             _isTweeningToAim = false;
             if (Camera != null)
             {
+                Camera.GlobalPosition = targetTransform.Origin;
+                Camera.GlobalBasis = targetTransform.Basis;
                 _cameraPosition = Camera.GlobalPosition;
             }
         }));
