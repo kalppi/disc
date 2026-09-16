@@ -35,8 +35,9 @@ public partial class AimVisualizer : Node3D
     [Export] public Color ClockwiseColor { get; set; } = new(0.20f, 0.90f, 1.0f, 0.85f);     // Cyan for RHBH/LHFH
     [Export] public Color CounterClockwiseColor { get; set; } = new(1.0f, 0.40f, 0.90f, 0.85f); // Magenta/Pink for RHFH/LHBH
 
-    [ExportGroup("Trajectory & Flight Arc Prediction")]
-    [Export] public bool ShowPredictedTrajectory { get; set; } = true;
+    [ExportGroup("Training Mode & Trajectory Arc Preview")]
+    [Export] public bool TrainingModeRouteEnabled { get; set; } = true;
+    [Export] public Key ToggleRouteKey { get; set; } = Key.V;
     [Export] public int TrajectorySteps { get; set; } = 48;
     [Export] public float TrajectoryStepDt { get; set; } = 0.045f;
     [Export] public float TrajectoryPointRadius { get; set; } = 0.024f;
@@ -103,6 +104,18 @@ public partial class AimVisualizer : Node3D
     {
         CreateMaterials();
         BuildVisualHierarchy();
+    }
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event is InputEventKey keyEvent && keyEvent.Pressed && !keyEvent.Echo)
+        {
+            if (keyEvent.Keycode == ToggleRouteKey)
+            {
+                TrainingModeRouteEnabled = !TrainingModeRouteEnabled;
+                GetViewport()?.SetInputAsHandled();
+            }
+        }
     }
 
     public override void _Process(double delta)
@@ -607,7 +620,7 @@ public partial class AimVisualizer : Node3D
 
     private void UpdateTrajectoryArc()
     {
-        if (!ShowPredictedTrajectory || Disc == null || ThrowController == null)
+        if (!TrainingModeRouteEnabled || Disc == null || ThrowController == null)
         {
             _trajectoryRoot.Visible = false;
             return;
@@ -636,7 +649,6 @@ public partial class AimVisualizer : Node3D
         float dt = TrajectoryStepDt;
         int count = Mathf.Min(TrajectorySteps, _trajectoryPoints.Count);
         bool hitGround = false;
-        Vector3 lastPos = currentPos;
 
         for (int i = 0; i < count; i++)
         {
@@ -744,7 +756,6 @@ public partial class AimVisualizer : Node3D
             float dFactor = Mathf.Max(0.0f, 1.0f - effDrag * dt);
             simVelocity = new Vector3(simVelocity.X * dFactor, simVelocity.Y, simVelocity.Z * dFactor);
 
-            lastPos = currentPos;
             currentPos += simVelocity * dt;
 
             // Ground intersection check
