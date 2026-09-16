@@ -142,7 +142,7 @@ public partial class ThrowController : Node
             }
 
             // Scroll Wheel directly adjusts power cleanly
-            if (mouseButton.Pressed)
+            if (mouseButton.Pressed && Input.IsKeyPressed(Key.Shift))
             {
                 if (mouseButton.ButtonIndex == MouseButton.WheelUp)
                 {

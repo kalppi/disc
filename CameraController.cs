@@ -92,7 +92,7 @@ public partial class CameraController : Node3D
             }
         }
 
-        if (@event is InputEventMouseButton mouseButton && mouseButton.Pressed)
+        if (@event is InputEventMouseButton mouseButton && mouseButton.Pressed && !Input.IsKeyPressed(Key.Shift))
         {
             if (mouseButton.ButtonIndex == MouseButton.WheelUp)
             {
