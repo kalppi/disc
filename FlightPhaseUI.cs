@@ -29,7 +29,7 @@ public partial class FlightPhaseUI : CanvasLayer
     private Label _flightTendencyLabel = null!;
 
     // Phase Segment Boxes
-    private Container _barContainer = null!;
+    private HBoxContainer _barContainer = null!;
     private PanelContainer _launchSegment = null!;
     private PanelContainer _turnSegment = null!;
     private PanelContainer _glideSegment = null!;
@@ -49,6 +49,7 @@ public partial class FlightPhaseUI : CanvasLayer
     private Label _airtimeLabel = null!;
 
     private const float TotalCardWidth = 360.0f;
+    private const float ContentWidth = TotalCardWidth - 16.0f;
     private const float BarHeight = 16.0f;
 
     public override void _Ready()
@@ -81,7 +82,7 @@ public partial class FlightPhaseUI : CanvasLayer
 
     private void BuildUI()
     {
-        // 1. Position in bottom-right corner
+        // 1. Position in bottom-right corner with fixed width
         _rootContainer = new Control
         {
             Name = "HUD_FlightRoot",
@@ -89,21 +90,23 @@ public partial class FlightPhaseUI : CanvasLayer
             AnchorRight = 1.0f,
             AnchorTop = 1.0f,
             AnchorBottom = 1.0f,
-            OffsetLeft = -TotalCardWidth - 28.0f,
-            OffsetRight = -16.0f,
-            OffsetTop = -135.0f,
+            OffsetLeft = -TotalCardWidth - 20.0f,
+            OffsetRight = -20.0f,
+            OffsetTop = -140.0f,
             OffsetBottom = -16.0f,
+            CustomMinimumSize = new Vector2(TotalCardWidth, 124.0f),
             GrowHorizontal = Control.GrowDirection.Begin,
             GrowVertical = Control.GrowDirection.Begin
         };
         AddChild(_rootContainer);
 
-        // 2. Translucent Glass Card Background
+        // 2. Translucent Glass Card Background with rigid size
         _cardPanel = new PanelContainer
         {
             Name = "CardPanel",
             AnchorRight = 1.0f,
-            AnchorBottom = 1.0f
+            AnchorBottom = 1.0f,
+            CustomMinimumSize = new Vector2(TotalCardWidth, 124.0f)
         };
 
         var cardStyle = new StyleBoxFlat
@@ -128,7 +131,8 @@ public partial class FlightPhaseUI : CanvasLayer
 
         var vBox = new VBoxContainer
         {
-            CustomMinimumSize = new Vector2(TotalCardWidth, 0),
+            CustomMinimumSize = new Vector2(ContentWidth, 0),
+            SizeFlagsHorizontal = Control.SizeFlags.Fill,
             Alignment = BoxContainer.AlignmentMode.Center
         };
         vBox.AddThemeConstantOverride("separation", 5);
@@ -137,15 +141,17 @@ public partial class FlightPhaseUI : CanvasLayer
         // 3. Row 1: 4 Clean Compact Style Pills
         var styleRow = new HBoxContainer
         {
+            CustomMinimumSize = new Vector2(ContentWidth, 22.0f),
+            SizeFlagsHorizontal = Control.SizeFlags.Fill,
             Alignment = BoxContainer.AlignmentMode.Center
         };
         styleRow.AddThemeConstantOverride("separation", 4);
         vBox.AddChild(styleRow);
 
-        _cardRHBH = CreateStylePill("RHBH ↻", ThrowTechnique.RHBH);
-        _cardRHFH = CreateStylePill("RHFH ↺", ThrowTechnique.RHFH);
-        _cardLHBH = CreateStylePill("LHBH ↺", ThrowTechnique.LHBH);
-        _cardLHFH = CreateStylePill("LHFH ↻", ThrowTechnique.LHFH);
+        _cardRHBH = CreateStylePill("RHBH \u21bb", ThrowTechnique.RHBH);
+        _cardRHFH = CreateStylePill("RHFH \u21ba", ThrowTechnique.RHFH);
+        _cardLHBH = CreateStylePill("LHBH \u21ba", ThrowTechnique.LHBH);
+        _cardLHFH = CreateStylePill("LHFH \u21bb", ThrowTechnique.LHFH);
 
         styleRow.AddChild(_cardRHBH);
         styleRow.AddChild(_cardRHFH);
@@ -155,6 +161,8 @@ public partial class FlightPhaseUI : CanvasLayer
         // 4. Row 2: Disc Flight Ratings & Flight Tendency
         var statsRow = new HBoxContainer
         {
+            CustomMinimumSize = new Vector2(ContentWidth, 0),
+            SizeFlagsHorizontal = Control.SizeFlags.Fill,
             Alignment = BoxContainer.AlignmentMode.Begin
         };
         statsRow.AddThemeConstantOverride("separation", 4);
@@ -172,7 +180,7 @@ public partial class FlightPhaseUI : CanvasLayer
 
         _flightTendencyLabel = new Label
         {
-            Text = "Fade Left ⬅",
+            Text = "Fade Left \u2b05",
             HorizontalAlignment = HorizontalAlignment.Right,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
@@ -180,10 +188,11 @@ public partial class FlightPhaseUI : CanvasLayer
         _flightTendencyLabel.AddThemeFontSizeOverride("font_size", 10);
         statsRow.AddChild(_flightTendencyLabel);
 
-        // 5. Row 3: Flight Phase Bar
+        // 5. Row 3: Flight Phase Bar (Uses SizeFlagsStretchRatio so total width NEVER changes)
         _barContainer = new HBoxContainer
         {
-            CustomMinimumSize = new Vector2(TotalCardWidth, BarHeight),
+            CustomMinimumSize = new Vector2(ContentWidth, BarHeight),
+            SizeFlagsHorizontal = Control.SizeFlags.Fill,
             Alignment = BoxContainer.AlignmentMode.Center
         };
         _barContainer.AddThemeConstantOverride("separation", 2);
@@ -202,30 +211,48 @@ public partial class FlightPhaseUI : CanvasLayer
         // 6. Row 4: Status Footer
         var bottomRow = new HBoxContainer
         {
+            CustomMinimumSize = new Vector2(ContentWidth, 0),
+            SizeFlagsHorizontal = Control.SizeFlags.Fill,
             Alignment = BoxContainer.AlignmentMode.Begin
         };
         bottomRow.AddThemeConstantOverride("separation", 5);
         vBox.AddChild(bottomRow);
 
         _livePhaseBadge = CreateBadge("READY", new Color(0.2f, 0.9f, 0.4f));
+        _livePhaseBadge.CustomMinimumSize = new Vector2(56.0f, 0.0f);
+        _livePhaseBadge.HorizontalAlignment = HorizontalAlignment.Center;
         bottomRow.AddChild(_livePhaseBadge);
 
-        _powerLabel = new Label { Text = "50%" };
+        _powerLabel = new Label
+        {
+            Text = "Pwr: 50%",
+            CustomMinimumSize = new Vector2(54.0f, 0.0f)
+        };
         _powerLabel.AddThemeFontSizeOverride("font_size", 9);
         _powerLabel.AddThemeColorOverride("font_color", new Color(0.85f, 0.88f, 0.92f));
         bottomRow.AddChild(_powerLabel);
 
-        _pitchLabel = new Label { Text = "0° Level" };
+        _pitchLabel = new Label
+        {
+            Text = "0\u00b0 Level",
+            CustomMinimumSize = new Vector2(58.0f, 0.0f)
+        };
         _pitchLabel.AddThemeFontSizeOverride("font_size", 9);
         _pitchLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.88f, 0.45f));
         bottomRow.AddChild(_pitchLabel);
 
-        _angleLabel = new Label { Text = "Flat" };
+        _angleLabel = new Label
+        {
+            Text = "Flat",
+            CustomMinimumSize = new Vector2(52.0f, 0.0f)
+        };
         _angleLabel.AddThemeFontSizeOverride("font_size", 9);
         _angleLabel.AddThemeColorOverride("font_color", new Color(0.85f, 0.88f, 0.92f));
         bottomRow.AddChild(_angleLabel);
 
         _camModeBadge = CreateBadge("[F] Snap", new Color(0.45f, 0.6f, 0.75f));
+        _camModeBadge.CustomMinimumSize = new Vector2(54.0f, 0.0f);
+        _camModeBadge.HorizontalAlignment = HorizontalAlignment.Center;
         bottomRow.AddChild(_camModeBadge);
 
         _airtimeLabel = new Label
@@ -244,7 +271,7 @@ public partial class FlightPhaseUI : CanvasLayer
         var button = new Button
         {
             Text = labelText,
-            CustomMinimumSize = new Vector2((TotalCardWidth - 12.0f) * 0.25f, 22.0f),
+            CustomMinimumSize = new Vector2(0.0f, 22.0f),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             FocusMode = Control.FocusModeEnum.None
         };
@@ -263,7 +290,8 @@ public partial class FlightPhaseUI : CanvasLayer
         var segment = new PanelContainer
         {
             Name = $"Segment_{name}",
-            CustomMinimumSize = new Vector2(40.0f, BarHeight),
+            CustomMinimumSize = new Vector2(0.0f, BarHeight),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.Fill
         };
 
@@ -286,7 +314,8 @@ public partial class FlightPhaseUI : CanvasLayer
         {
             Text = name,
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center
+            VerticalAlignment = VerticalAlignment.Center,
+            ClipText = true
         };
         label.AddThemeFontSizeOverride("font_size", 8);
         label.AddThemeColorOverride("font_color", new Color(1.0f, 1.0f, 1.0f, 0.95f));
@@ -354,16 +383,11 @@ public partial class FlightPhaseUI : CanvasLayer
             );
         var tendency = Disc.EstimateFlightTendency(throwParams);
 
-        // 4. Update Segment Widths
-        float launchW = Mathf.Max(18.0f, tendency.LaunchWeight * (TotalCardWidth - 8.0f));
-        float turnW = Mathf.Max(tendency.TurnWeight > 0.02f ? 18.0f : 0.0f, tendency.TurnWeight * (TotalCardWidth - 8.0f));
-        float glideW = Mathf.Max(18.0f, tendency.GlideWeight * (TotalCardWidth - 8.0f));
-        float fadeW = Mathf.Max(18.0f, tendency.FadeWeight * (TotalCardWidth - 8.0f));
-
-        SetSegmentWidth(_launchSegment, launchW);
-        SetSegmentWidth(_turnSegment, turnW);
-        SetSegmentWidth(_glideSegment, glideW);
-        SetSegmentWidth(_fadeSegment, fadeW);
+        // 4. Update Segment Proportions via SizeFlagsStretchRatio (constant container width)
+        _launchSegment.SizeFlagsStretchRatio = Mathf.Max(0.08f, tendency.LaunchWeight);
+        _turnSegment.SizeFlagsStretchRatio = Mathf.Max(0.08f, tendency.TurnWeight);
+        _glideSegment.SizeFlagsStretchRatio = Mathf.Max(0.08f, tendency.GlideWeight);
+        _fadeSegment.SizeFlagsStretchRatio = Mathf.Max(0.08f, tendency.FadeWeight);
 
         _turnSegment.Visible = tendency.TurnWeight > 0.02f;
 
@@ -384,17 +408,17 @@ public partial class FlightPhaseUI : CanvasLayer
 
         if (Mathf.Abs(pitch) < 0.5f)
         {
-            _pitchLabel.Text = "0° Level";
+            _pitchLabel.Text = "0\u00b0 Level";
             _pitchLabel.AddThemeColorOverride("font_color", new Color(0.3f, 0.95f, 0.6f));
         }
         else if (pitch > 0.0f)
         {
-            _pitchLabel.Text = $"+{pitch:F0}° Up";
+            _pitchLabel.Text = $"+{pitch:F0}\u00b0 Up";
             _pitchLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.82f, 0.35f));
         }
         else
         {
-            _pitchLabel.Text = $"{pitch:F0}° Down";
+            _pitchLabel.Text = $"{pitch:F0}\u00b0 Down";
             _pitchLabel.AddThemeColorOverride("font_color", new Color(0.5f, 0.8f, 1.0f));
         }
 
@@ -406,11 +430,11 @@ public partial class FlightPhaseUI : CanvasLayer
         }
         else if (releaseAngle > 0.0f)
         {
-            _angleLabel.Text = spinSign > 0 ? $"+{releaseAngle:F0}° Anh" : $"+{releaseAngle:F0}° Hyz";
+            _angleLabel.Text = spinSign > 0 ? $"+{releaseAngle:F0}\u00b0 Anh" : $"+{releaseAngle:F0}\u00b0 Hyz";
         }
         else
         {
-            _angleLabel.Text = spinSign > 0 ? $"{releaseAngle:F0}° Hyz" : $"{releaseAngle:F0}° Anh";
+            _angleLabel.Text = spinSign > 0 ? $"{releaseAngle:F0}\u00b0 Hyz" : $"{releaseAngle:F0}\u00b0 Anh";
         }
 
         // Camera Free-Look Reset Mode Badge
@@ -437,11 +461,11 @@ public partial class FlightPhaseUI : CanvasLayer
         }
         else if (tendency.TurnWeight > 0.25f)
         {
-            _flightTendencyLabel.Text = spinSign > 0 ? "Turn Right ➔" : "Turn Left ⬅";
+            _flightTendencyLabel.Text = spinSign > 0 ? "Turn Right \u2794" : "Turn Left \u2b05";
         }
         else if (tendency.FadeWeight > 0.35f)
         {
-            _flightTendencyLabel.Text = spinSign > 0 ? "Fade Left ⬅" : "Fade Right ➔";
+            _flightTendencyLabel.Text = spinSign > 0 ? "Fade Left \u2b05" : "Fade Right \u2794";
         }
         else
         {
@@ -487,11 +511,6 @@ public partial class FlightPhaseUI : CanvasLayer
         button.AddThemeStyleboxOverride("normal", style);
         button.AddThemeStyleboxOverride("hover", style);
         button.AddThemeStyleboxOverride("pressed", style);
-    }
-
-    private void SetSegmentWidth(PanelContainer segment, float width)
-    {
-        segment.CustomMinimumSize = new Vector2(width, BarHeight);
     }
 
     private void HighlightSegment(PanelContainer segment, Color baseColor, bool isActive)
