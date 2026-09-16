@@ -8,42 +8,48 @@ public partial class AimVisualizer : Node3D
 
     [ExportGroup("Aim Direction Guide Line (Full Distance)")]
     [Export] public float AimLineLength { get; set; } = 30.0f;
-    [Export] public float AimLineRadius { get; set; } = 0.020f;
-    [Export] public float AimArrowHeadLength { get; set; } = 0.60f;
-    [Export] public float AimArrowHeadRadius { get; set; } = 0.08f;
+    [Export] public float AimLineRadius { get; set; } = 0.045f;
+    [Export] public float AimArrowHeadLength { get; set; } = 0.75f;
+    [Export] public float AimArrowHeadRadius { get; set; } = 0.12f;
     [Export] public Color AimGuideColor { get; set; } = new(1.0f, 1.0f, 1.0f, 0.45f);
     [Export] public bool ShowDistanceTicks { get; set; } = true;
     [Export] public float DistanceTickSpacing { get; set; } = 5.0f;
+    [Export] public float DistanceTickWidth { get; set; } = 0.50f;
+    [Export] public float DistanceTickThickness { get; set; } = 0.035f;
 
     [ExportGroup("Power Indicator Line (Dynamic Fill)")]
     [Export] public float MinPowerLength { get; set; } = 0.5f;
-    [Export] public float PowerLineRadius { get; set; } = 0.038f;
-    [Export] public float PowerArrowHeadLength { get; set; } = 0.55f;
-    [Export] public float PowerArrowHeadRadius { get; set; } = 0.11f;
+    [Export] public float PowerLineRadius { get; set; } = 0.070f;
+    [Export] public float PowerArrowHeadLength { get; set; } = 0.70f;
+    [Export] public float PowerArrowHeadRadius { get; set; } = 0.15f;
 
     [ExportGroup("Forward Level Reference Line (Pitch = 0)")]
     [Export] public bool ShowHorizonReference { get; set; } = true;
     [Export] public float ForwardReferenceLength { get; set; } = 30.0f;
-    [Export] public float ForwardReferenceRadius { get; set; } = 0.018f;
+    [Export] public float ForwardReferenceRadius { get; set; } = 0.035f;
+    [Export] public float VerticalConnectorRadius { get; set; } = 0.025f;
     [Export] public Color ForwardReferenceColor { get; set; } = new(0.85f, 0.90f, 1.0f, 0.35f);
     [Export] public Color HorizonCrossbarColor { get; set; } = new(0.3f, 0.85f, 1.0f, 0.80f);
     [Export] public float HorizonCrossbarWidth { get; set; } = 1.5f;
 
     [ExportGroup("3D Spin & Technique Ring")]
     [Export] public bool ShowSpinPreview { get; set; } = true;
-    [Export] public float SpinRingRadius { get; set; } = 0.46f;
-    [Export] public Color ClockwiseColor { get; set; } = new(0.20f, 0.90f, 1.0f, 0.85f);     // Cyan for RHBH/LHFH
-    [Export] public Color CounterClockwiseColor { get; set; } = new(1.0f, 0.40f, 0.90f, 0.85f); // Magenta/Pink for RHFH/LHBH
+    [Export] public float SpinRingRadius { get; set; } = 0.48f;
+    [Export] public float SpinRingThickness { get; set; } = 0.035f;
+    [Export] public Color ClockwiseColor { get; set; } = new(0.20f, 0.90f, 1.0f, 0.85f);
+    [Export] public Color CounterClockwiseColor { get; set; } = new(1.0f, 0.40f, 0.90f, 0.85f);
 
     [ExportGroup("Training Mode & Trajectory Arc Preview")]
     [Export] public bool TrainingModeRouteEnabled { get; set; } = true;
     [Export] public Key ToggleRouteKey { get; set; } = Key.V;
-    [Export] public int TrajectorySteps { get; set; } = 48;
+    [Export] public int TrajectorySteps { get; set; } = 56;
     [Export] public float TrajectoryStepDt { get; set; } = 0.045f;
-    [Export] public float TrajectoryPointRadius { get; set; } = 0.024f;
+    [Export] public float TrajectoryThickness { get; set; } = 0.045f;
+    [Export] public int TrajectoryRadialSegments { get; set; } = 8;
     [Export] public bool ShowPredictedLandingTarget { get; set; } = true;
-    [Export] public Color TrajectoryApexColor { get; set; } = new(1.0f, 0.90f, 0.25f, 0.90f);
-    [Export] public Color TrajectoryLandingColor { get; set; } = new(0.95f, 0.35f, 0.15f, 0.85f);
+    [Export] public Color TrajectoryStartColor { get; set; } = new(0.25f, 0.85f, 1.0f, 0.90f);
+    [Export] public Color TrajectoryApexColor { get; set; } = new(1.0f, 0.90f, 0.25f, 0.95f);
+    [Export] public Color TrajectoryLandingColor { get; set; } = new(0.95f, 0.35f, 0.15f, 0.90f);
 
     [ExportGroup("Power Colors")]
     [Export] public Color LowPowerColor { get; set; } = new(0.15f, 0.85f, 1.0f, 1.0f);
@@ -52,10 +58,10 @@ public partial class AimVisualizer : Node3D
     [Export] public Color PivotMarkerColor { get; set; } = new(0.2f, 0.9f, 1.0f, 0.95f);
 
     // Root nodes
-    private Node3D _headingRoot = null!;  // Rotates ONLY with Yaw (Horizontal Level Plane at Pitch = 0)
-    private Node3D _aimRoot = null!;      // Rotates with Yaw + Pitch (True 3D Throw Vector)
-    private Node3D _discRoot = null!;     // Rotates with Yaw + Pitch + ReleaseAngle (True 3D Disc Plane)
-    private Node3D _trajectoryRoot = null!; // Holds simulated trajectory arc & landing ring
+    private Node3D _headingRoot = null!;
+    private Node3D _aimRoot = null!;
+    private Node3D _discRoot = null!;
+    private Node3D _trajectoryRoot = null!;
 
     // 1. Horizon & Heading References (Pitch = 0)
     private MeshInstance3D _forwardRefLine = null!;
@@ -72,7 +78,7 @@ public partial class AimVisualizer : Node3D
     private CylinderMesh _aimGuideArrowMesh = null!;
     private readonly List<MeshInstance3D> _aimTicks = new();
 
-    // 3. Dynamic Power Fill Line (Scales along Aim Guide with Power)
+    // 3. Dynamic Power Fill Line
     private MeshInstance3D _pivotMarker = null!;
     private MeshInstance3D _powerShaft = null!;
     private MeshInstance3D _powerArrowHead = null!;
@@ -87,8 +93,9 @@ public partial class AimVisualizer : Node3D
     private StandardMaterial3D _spinMaterial = null!;
     private float _spinAnimPulse;
 
-    // 5. Trajectory Prediction Points & Landing Target
-    private readonly List<MeshInstance3D> _trajectoryPoints = new();
+    // 5. Procedural 3D Trajectory Tube Mesh & Landing Target
+    private MeshInstance3D _trajectoryTube = null!;
+    private ArrayMesh _trajectoryMesh = null!;
     private MeshInstance3D _predictedLandingTarget = null!;
     private StandardMaterial3D _trajectoryMaterial = null!;
     private StandardMaterial3D _landingMaterial = null!;
@@ -100,8 +107,24 @@ public partial class AimVisualizer : Node3D
     private StandardMaterial3D _connectorMaterial = null!;
     private StandardMaterial3D _pivotMaterial = null!;
 
+    // Reusable tube mesh builder & flight simulation buffer
+    private TubeMeshBuilder _tubeMeshBuilder = null!;
+    private readonly List<Vector3> _simPoints = new(64);
+
+    // Caching & Dirty flag optimization state
+    private bool _needsInitialBuild = true;
+    private Vector3 _cachedDiscPos = Vector3.Zero;
+    private float _cachedYaw = float.NaN;
+    private float _cachedPitch = float.NaN;
+    private float _cachedPower = float.NaN;
+    private float _cachedReleaseAngle = float.NaN;
+    private ThrowTechnique _cachedTechnique = (ThrowTechnique)(-1);
+    private bool _cachedRouteEnabled;
+    private bool _cachedShowHorizon;
+
     public override void _Ready()
     {
+        _tubeMeshBuilder = new TubeMeshBuilder();
         CreateMaterials();
         BuildVisualHierarchy();
     }
@@ -128,26 +151,83 @@ public partial class AimVisualizer : Node3D
         // Hide visualization during active flight
         if (Disc != null && Disc.IsFlying)
         {
-            Visible = false;
+            if (Visible)
+            {
+                Visible = false;
+            }
             return;
         }
 
-        Visible = true;
-
-        if (Disc != null)
+        if (!Visible)
         {
-            GlobalPosition = Disc.GlobalPosition;
+            Visible = true;
+            _needsInitialBuild = true;
         }
 
-        UpdateAimOrientation();
-        UpdatePowerVisuals();
-        UpdateSpinPreview((float)delta);
-        UpdateTrajectoryArc();
+        Vector3 currentDiscPos = Disc != null ? Disc.GlobalPosition : GlobalPosition;
+        bool posChanged = _needsInitialBuild || _cachedDiscPos.DistanceSquaredTo(currentDiscPos) > 0.0001f;
+        if (posChanged)
+        {
+            GlobalPosition = currentDiscPos;
+            _cachedDiscPos = currentDiscPos;
+        }
+
+        float curYaw = ThrowController.Yaw;
+        float curPitch = ThrowController.Pitch;
+        float curPower = ThrowController.Power;
+        float curAngle = ThrowController.ReleaseAngle;
+        ThrowTechnique curTechnique = ThrowController.Technique;
+
+        bool orientationDirty = _needsInitialBuild ||
+                                Mathf.Abs(_cachedYaw - curYaw) > 0.001f ||
+                                Mathf.Abs(_cachedPitch - curPitch) > 0.001f ||
+                                Mathf.Abs(_cachedReleaseAngle - curAngle) > 0.001f ||
+                                _cachedShowHorizon != ShowHorizonReference;
+
+        bool powerDirty = _needsInitialBuild ||
+                         Mathf.Abs(_cachedPower - curPower) > 0.0005f ||
+                         Mathf.Abs(_cachedPitch - curPitch) > 0.001f;
+
+        bool trajectoryDirty = _needsInitialBuild ||
+                               posChanged ||
+                               orientationDirty ||
+                               powerDirty ||
+                               _cachedRouteEnabled != TrainingModeRouteEnabled ||
+                               _cachedTechnique != curTechnique;
+
+        // 1. Update aim orientation only when angles change
+        if (orientationDirty)
+        {
+            UpdateAimOrientation(curYaw, curPitch, curAngle);
+            _cachedYaw = curYaw;
+            _cachedPitch = curPitch;
+            _cachedReleaseAngle = curAngle;
+            _cachedShowHorizon = ShowHorizonReference;
+        }
+
+        // 2. Update power indicator only when power or pitch changes
+        if (powerDirty)
+        {
+            UpdatePowerVisuals(curPower, curPitch);
+            _cachedPower = curPower;
+        }
+
+        // 3. Update spin preview
+        UpdateSpinPreview((float)delta, curTechnique);
+
+        // 4. Rebuild trajectory 3D tube mesh ONLY when inputs change
+        if (trajectoryDirty)
+        {
+            UpdateTrajectoryArc(curPower, curAngle, curTechnique);
+            _cachedRouteEnabled = TrainingModeRouteEnabled;
+            _cachedTechnique = curTechnique;
+        }
+
+        _needsInitialBuild = false;
     }
 
     private void CreateMaterials()
     {
-        // 1. Full-Length Aim Guide Material
         _aimGuideMaterial = new StandardMaterial3D
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
@@ -157,7 +237,6 @@ public partial class AimVisualizer : Node3D
             CullMode = BaseMaterial3D.CullModeEnum.Disabled
         };
 
-        // 2. Dynamic Power Fill Material
         _powerMaterial = new StandardMaterial3D
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
@@ -166,7 +245,6 @@ public partial class AimVisualizer : Node3D
             CullMode = BaseMaterial3D.CullModeEnum.Disabled
         };
 
-        // 3. Level Reference Material (Pitch = 0)
         _forwardRefMaterial = new StandardMaterial3D
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
@@ -179,7 +257,7 @@ public partial class AimVisualizer : Node3D
         _connectorMaterial = new StandardMaterial3D
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            AlbedoColor = new Color(1.0f, 1.0f, 1.0f, 0.50f),
+            AlbedoColor = new Color(1.0f, 1.0f, 1.0f, 0.55f),
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             RenderPriority = 1,
             CullMode = BaseMaterial3D.CullModeEnum.Disabled
@@ -191,7 +269,6 @@ public partial class AimVisualizer : Node3D
             AlbedoColor = PivotMarkerColor
         };
 
-        // 4. Spin Preview Material
         _spinMaterial = new StandardMaterial3D
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
@@ -201,11 +278,10 @@ public partial class AimVisualizer : Node3D
             CullMode = BaseMaterial3D.CullModeEnum.Disabled
         };
 
-        // 5. Trajectory Materials
         _trajectoryMaterial = new StandardMaterial3D
         {
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            AlbedoColor = TrajectoryApexColor,
+            VertexColorUseAsAlbedo = true,
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             RenderPriority = 3,
             CullMode = BaseMaterial3D.CullModeEnum.Disabled
@@ -223,38 +299,32 @@ public partial class AimVisualizer : Node3D
 
     private void BuildVisualHierarchy()
     {
-        // Pivot point marker at disc center
         _pivotMarker = new MeshInstance3D
         {
             Name = "PivotMarker",
             Mesh = new SphereMesh
             {
-                Radius = PowerLineRadius * 1.8f,
-                Height = PowerLineRadius * 3.6f
+                Radius = PowerLineRadius * 1.5f,
+                Height = PowerLineRadius * 3.0f
             },
             MaterialOverride = _pivotMaterial,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
         AddChild(_pivotMarker);
 
-        // Heading Root (Yaw only - stays strictly horizontal at pitch = 0)
         _headingRoot = new Node3D { Name = "HeadingRoot" };
         AddChild(_headingRoot);
         BuildForwardReference();
 
-        // Aim Root (Yaw + Pitch - points along true 3D throw direction)
         _aimRoot = new Node3D { Name = "AimRoot" };
         AddChild(_aimRoot);
-
         BuildAimDirectionGuide();
         BuildPowerFillLine();
 
-        // Disc Root (Yaw + Pitch + ReleaseAngle - coplanar with the disc)
         _discRoot = new Node3D { Name = "DiscRoot" };
         AddChild(_discRoot);
         BuildSpinPreview();
 
-        // Trajectory Root (World-aligned container for arc dots and landing ring)
         _trajectoryRoot = new Node3D
         {
             Name = "TrajectoryRoot",
@@ -266,13 +336,12 @@ public partial class AimVisualizer : Node3D
 
     private void BuildForwardReference()
     {
-        // Forward Level Reference Shaft
         _forwardRefMesh = new CylinderMesh
         {
             TopRadius = ForwardReferenceRadius,
             BottomRadius = ForwardReferenceRadius,
             Height = ForwardReferenceLength,
-            RadialSegments = 12
+            RadialSegments = 16
         };
         _forwardRefLine = new MeshInstance3D
         {
@@ -285,13 +354,12 @@ public partial class AimVisualizer : Node3D
         };
         _headingRoot.AddChild(_forwardRefLine);
 
-        // Forward Arrow Head
         _forwardArrowMesh = new CylinderMesh
         {
             TopRadius = 0.0f,
             BottomRadius = ForwardReferenceRadius * 2.5f,
-            Height = AimArrowHeadLength * 0.7f,
-            RadialSegments = 12
+            Height = AimArrowHeadLength * 0.75f,
+            RadialSegments = 16
         };
         _forwardArrowHead = new MeshInstance3D
         {
@@ -299,18 +367,17 @@ public partial class AimVisualizer : Node3D
             Mesh = _forwardArrowMesh,
             MaterialOverride = _forwardRefMaterial,
             RotationDegrees = new Vector3(-90.0f, 0.0f, 0.0f),
-            Position = new Vector3(0.0f, 0.0f, -ForwardReferenceLength - AimArrowHeadLength * 0.35f),
+            Position = new Vector3(0.0f, 0.0f, -ForwardReferenceLength - AimArrowHeadLength * 0.375f),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
         _headingRoot.AddChild(_forwardArrowHead);
 
-        // Vertical elevation connector between aim power tip and horizontal plane
         _verticalConnectorMesh = new CylinderMesh
         {
-            TopRadius = 0.012f,
-            BottomRadius = 0.012f,
+            TopRadius = VerticalConnectorRadius,
+            BottomRadius = VerticalConnectorRadius,
             Height = 1.0f,
-            RadialSegments = 8
+            RadialSegments = 12
         };
         _verticalConnector = new MeshInstance3D
         {
@@ -325,13 +392,12 @@ public partial class AimVisualizer : Node3D
 
     private void BuildAimDirectionGuide()
     {
-        // 1. Full-Length Direction Shaft
         _aimGuideShaftMesh = new CylinderMesh
         {
             TopRadius = AimLineRadius,
             BottomRadius = AimLineRadius,
             Height = AimLineLength,
-            RadialSegments = 12
+            RadialSegments = 16
         };
         _aimGuideShaft = new MeshInstance3D
         {
@@ -339,17 +405,17 @@ public partial class AimVisualizer : Node3D
             Mesh = _aimGuideShaftMesh,
             MaterialOverride = _aimGuideMaterial,
             RotationDegrees = new Vector3(90.0f, 0.0f, 0.0f),
-            Position = new Vector3(0.0f, 0.0f, -AimLineLength * 0.5f)
+            Position = new Vector3(0.0f, 0.0f, -AimLineLength * 0.5f),
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
         _aimRoot.AddChild(_aimGuideShaft);
 
-        // 2. Aim Guide Arrow Head at distant target tip
         _aimGuideArrowMesh = new CylinderMesh
         {
             TopRadius = 0.0f,
             BottomRadius = AimArrowHeadRadius,
             Height = AimArrowHeadLength,
-            RadialSegments = 12
+            RadialSegments = 16
         };
         _aimGuideArrowHead = new MeshInstance3D
         {
@@ -357,11 +423,11 @@ public partial class AimVisualizer : Node3D
             Mesh = _aimGuideArrowMesh,
             MaterialOverride = _aimGuideMaterial,
             RotationDegrees = new Vector3(-90.0f, 0.0f, 0.0f),
-            Position = new Vector3(0.0f, 0.0f, -AimLineLength - AimArrowHeadLength * 0.5f)
+            Position = new Vector3(0.0f, 0.0f, -AimLineLength - AimArrowHeadLength * 0.5f),
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
         _aimRoot.AddChild(_aimGuideArrowHead);
 
-        // 3. Distance tick marks along the 3D aim vector
         _aimTicks.Clear();
         if (ShowDistanceTicks && DistanceTickSpacing > 0.5f)
         {
@@ -372,10 +438,11 @@ public partial class AimVisualizer : Node3D
                     Name = $"AimTick_{dist:F0}m",
                     Mesh = new BoxMesh
                     {
-                        Size = new Vector3(0.35f, 0.01f, 0.03f)
+                        Size = new Vector3(DistanceTickWidth, DistanceTickThickness, DistanceTickThickness * 1.5f)
                     },
                     MaterialOverride = _aimGuideMaterial,
-                    Position = new Vector3(0.0f, 0.0f, -dist)
+                    Position = new Vector3(0.0f, 0.0f, -dist),
+                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
                 };
                 _aimRoot.AddChild(tick);
                 _aimTicks.Add(tick);
@@ -385,37 +452,37 @@ public partial class AimVisualizer : Node3D
 
     private void BuildPowerFillLine()
     {
-        // 1. Dynamic Power Fill Shaft
         _powerShaftMesh = new CylinderMesh
         {
             TopRadius = PowerLineRadius,
             BottomRadius = PowerLineRadius,
             Height = MinPowerLength,
-            RadialSegments = 12
+            RadialSegments = 16
         };
         _powerShaft = new MeshInstance3D
         {
             Name = "PowerShaft",
             Mesh = _powerShaftMesh,
             MaterialOverride = _powerMaterial,
-            RotationDegrees = new Vector3(90.0f, 0.0f, 0.0f)
+            RotationDegrees = new Vector3(90.0f, 0.0f, 0.0f),
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
         _aimRoot.AddChild(_powerShaft);
 
-        // 2. Power Level Tip Arrow Head
         _powerArrowHeadMesh = new CylinderMesh
         {
             TopRadius = 0.0f,
             BottomRadius = PowerArrowHeadRadius,
             Height = PowerArrowHeadLength,
-            RadialSegments = 12
+            RadialSegments = 16
         };
         _powerArrowHead = new MeshInstance3D
         {
             Name = "PowerArrowHead",
             Mesh = _powerArrowHeadMesh,
             MaterialOverride = _powerMaterial,
-            RotationDegrees = new Vector3(-90.0f, 0.0f, 0.0f)
+            RotationDegrees = new Vector3(-90.0f, 0.0f, 0.0f),
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
         _aimRoot.AddChild(_powerArrowHead);
     }
@@ -425,29 +492,27 @@ public partial class AimVisualizer : Node3D
         _spinOrbitRoot = new Node3D { Name = "SpinOrbitRoot" };
         _discRoot.AddChild(_spinOrbitRoot);
 
-        // 1. Thin orbital ring encircling disc
         _spinTorus = new MeshInstance3D
         {
             Name = "SpinTorus",
             Mesh = new TorusMesh
             {
-                InnerRadius = SpinRingRadius * 0.94f,
-                OuterRadius = SpinRingRadius,
+                InnerRadius = Mathf.Max(0.1f, SpinRingRadius - SpinRingThickness),
+                OuterRadius = SpinRingRadius + SpinRingThickness,
                 Rings = 32,
-                RingSegments = 12
+                RingSegments = 16
             },
             MaterialOverride = _spinMaterial,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
         _spinOrbitRoot.AddChild(_spinTorus);
 
-        // 2. Tangential directional arrow heads on front and back of ring
         var arrowMesh = new CylinderMesh
         {
             TopRadius = 0.0f,
-            BottomRadius = 0.045f,
-            Height = 0.12f,
-            RadialSegments = 10
+            BottomRadius = 0.055f,
+            Height = 0.15f,
+            RadialSegments = 12
         };
 
         _spinArrowHead1 = new MeshInstance3D
@@ -471,35 +536,23 @@ public partial class AimVisualizer : Node3D
 
     private void BuildTrajectoryVisuals()
     {
-        _trajectoryPoints.Clear();
-        var pointMesh = new SphereMesh
+        _trajectoryMesh = new ArrayMesh();
+        _trajectoryTube = new MeshInstance3D
         {
-            Radius = TrajectoryPointRadius,
-            Height = TrajectoryPointRadius * 2.0f,
-            RadialSegments = 8,
-            Rings = 4
+            Name = "TrajectoryTube",
+            Mesh = _trajectoryMesh,
+            MaterialOverride = _trajectoryMaterial,
+            Visible = false,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
-
-        for (int i = 0; i < TrajectorySteps; i++)
-        {
-            var pMesh = new MeshInstance3D
-            {
-                Name = $"TrajectoryPoint_{i}",
-                Mesh = pointMesh,
-                MaterialOverride = _trajectoryMaterial,
-                Visible = false,
-                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
-            };
-            _trajectoryRoot.AddChild(pMesh);
-            _trajectoryPoints.Add(pMesh);
-        }
+        _trajectoryRoot.AddChild(_trajectoryTube);
 
         var ringMesh = new TorusMesh
         {
-            InnerRadius = 0.55f,
-            OuterRadius = 0.65f,
-            Rings = 24,
-            RingSegments = 12
+            InnerRadius = 0.50f,
+            OuterRadius = 0.70f,
+            Rings = 28,
+            RingSegments = 16
         };
 
         _predictedLandingTarget = new MeshInstance3D
@@ -513,58 +566,48 @@ public partial class AimVisualizer : Node3D
         _trajectoryRoot.AddChild(_predictedLandingTarget);
     }
 
-    private void UpdateAimOrientation()
+    private void UpdateAimOrientation(float yaw, float pitch, float releaseAngle)
     {
-        // 1. Heading root stays strictly horizontal (Pitch = 0) pointing forward along Yaw
-        _headingRoot.Transform = Transform3D.Identity.Rotated(Vector3.Up, Mathf.DegToRad(ThrowController!.Yaw));
+        _headingRoot.Transform = Transform3D.Identity.Rotated(Vector3.Up, Mathf.DegToRad(yaw));
         _headingRoot.Visible = ShowHorizonReference;
 
-        // 2. Aim root rotates with both Yaw and Pitch (Full 3D Aim Vector)
         Transform3D aimTransform = Transform3D.Identity;
-        aimTransform = aimTransform.Rotated(Vector3.Up, Mathf.DegToRad(ThrowController.Yaw));
-        aimTransform = aimTransform.RotatedLocal(Vector3.Right, Mathf.DegToRad(ThrowController.Pitch));
+        aimTransform = aimTransform.Rotated(Vector3.Up, Mathf.DegToRad(yaw));
+        aimTransform = aimTransform.RotatedLocal(Vector3.Right, Mathf.DegToRad(pitch));
         _aimRoot.Transform = aimTransform;
 
-        // 3. Disc root rotates with Yaw, Pitch, AND ReleaseAngle (Hyzer/Anhyzer)
         Transform3D discTransform = aimTransform.RotatedLocal(
             Vector3.Forward,
-            Mathf.DegToRad(ThrowController.ReleaseAngle)
+            Mathf.DegToRad(releaseAngle)
         );
         _discRoot.Transform = discTransform;
 
-        // 4. Orient the actual DiscVisual node with the exact discTransform
         if (Disc?.DiscVisual != null)
         {
             Disc.DiscVisual.Transform = discTransform;
         }
     }
 
-    private void UpdatePowerVisuals()
+    private void UpdatePowerVisuals(float power, float pitch)
     {
-        float power = Mathf.Clamp(ThrowController!.Power, 0.0f, 1.0f);
-        float powerLength = Mathf.Lerp(MinPowerLength, AimLineLength, power);
-        float pitch = ThrowController.Pitch;
+        float clampedPower = Mathf.Clamp(power, 0.0f, 1.0f);
+        float powerLength = Mathf.Lerp(MinPowerLength, AimLineLength, clampedPower);
 
-        // 1. Update dynamic power shaft length and position along -Z
         _powerShaftMesh.Height = powerLength;
         _powerShaft.Position = new Vector3(0.0f, 0.0f, -powerLength * 0.5f);
-
-        // 2. Update power arrow head at current charge tip
         _powerArrowHead.Position = new Vector3(0.0f, 0.0f, -powerLength - PowerArrowHeadLength * 0.5f);
 
-        // 3. Update vertical connector between power charge tip and horizon plane
         UpdateVerticalConnector(pitch, powerLength);
 
-        // 4. Calculate power gradient color
         Color powerColor;
-        if (power < 0.5f)
+        if (clampedPower < 0.5f)
         {
-            float t = power / 0.5f;
+            float t = clampedPower / 0.5f;
             powerColor = LowPowerColor.Lerp(MidPowerColor, t);
         }
         else
         {
-            float t = (power - 0.5f) / 0.5f;
+            float t = (clampedPower - 0.5f) / 0.5f;
             powerColor = MidPowerColor.Lerp(HighPowerColor, t);
         }
 
@@ -572,19 +615,23 @@ public partial class AimVisualizer : Node3D
         _pivotMaterial.AlbedoColor = powerColor;
     }
 
-    private void UpdateSpinPreview(float dt)
+    private void UpdateSpinPreview(float dt, ThrowTechnique technique)
     {
-        if (!ShowSpinPreview || ThrowController == null)
+        if (!ShowSpinPreview)
         {
-            _spinOrbitRoot.Visible = false;
+            if (_spinOrbitRoot.Visible)
+            {
+                _spinOrbitRoot.Visible = false;
+            }
             return;
         }
 
-        _spinOrbitRoot.Visible = true;
-        ThrowTechnique technique = ThrowController.Technique;
-        float spinSign = DiscFlightController.GetSpinSign(technique);
+        if (!_spinOrbitRoot.Visible)
+        {
+            _spinOrbitRoot.Visible = true;
+        }
 
-        // Rotate arrow indicators smoothly around local Y (Disc normal)
+        float spinSign = DiscFlightController.GetSpinSign(technique);
         _spinAnimPulse += dt * 3.5f * spinSign;
         float r = SpinRingRadius;
 
@@ -618,7 +665,7 @@ public partial class AimVisualizer : Node3D
         _verticalConnector.Position = new Vector3(0.0f, tipY * 0.5f, tipZ);
     }
 
-    private void UpdateTrajectoryArc()
+    private void UpdateTrajectoryArc(float power, float releaseAngle, ThrowTechnique technique)
     {
         if (!TrainingModeRouteEnabled || Disc == null || ThrowController == null)
         {
@@ -628,50 +675,41 @@ public partial class AimVisualizer : Node3D
 
         _trajectoryRoot.Visible = true;
 
-        // Simulate flight prediction matching DiscFlightController's AoA, Turn, Fade, Lift, and Ground Effect
+        _simPoints.Clear();
+
         Vector3 currentPos = Disc.GlobalPosition;
-        float speed = Mathf.Lerp(Disc.MinThrowSpeed, Disc.MaxThrowSpeed, ThrowController.Power);
+        float speed = Mathf.Lerp(Disc.MinThrowSpeed, Disc.MaxThrowSpeed, power);
         Vector3 launchDir = ThrowController.Direction.Normalized();
         Vector3 simVelocity = launchDir * speed;
-        float bankAngle = ThrowController.ReleaseAngle;
+        float bankAngle = releaseAngle;
 
         float horizLen = new Vector2(launchDir.X, launchDir.Z).Length();
         float initialPitch = Mathf.Atan2(launchDir.Y, Mathf.Max(0.01f, horizLen));
         float currentPitch = initialPitch;
 
         float cruiseSpeed = Disc.GetRequiredCruiseSpeed();
-        float spinSign = DiscFlightController.GetSpinSign(ThrowController.Technique);
-        bool isForehand = DiscFlightController.IsForehandTechnique(ThrowController.Technique);
+        float spinSign = DiscFlightController.GetSpinSign(technique);
+        bool isForehand = DiscFlightController.IsForehandTechnique(technique);
         float turnTorque = isForehand ? Disc.ForehandTurnTorque : 1.0f;
         float fadeBite = isForehand ? Disc.ForehandFadeBite : 1.0f;
         float glideBonus = !isForehand ? Disc.BackhandGlideBonus : 1.0f;
 
         float dt = TrajectoryStepDt;
-        int count = Mathf.Min(TrajectorySteps, _trajectoryPoints.Count);
+        int maxSteps = Mathf.Clamp(TrajectorySteps, 8, 120);
         bool hitGround = false;
+        Vector3 landingPos = Vector3.Zero;
 
-        for (int i = 0; i < count; i++)
+        _simPoints.Add(currentPos);
+
+        for (int i = 0; i < maxSteps && !hitGround; i++)
         {
-            var pNode = _trajectoryPoints[i];
-
-            if (hitGround)
-            {
-                pNode.Visible = false;
-                continue;
-            }
-
-            pNode.Visible = true;
-            pNode.GlobalPosition = currentPos;
-
-            // Compute aerodynamics step
             Vector3 horizVel = new(simVelocity.X, 0.0f, simVelocity.Z);
             float hSpeed = horizVel.Length();
             float tSpeed = simVelocity.Length();
 
             if (hSpeed < 0.2f)
             {
-                pNode.Visible = false;
-                continue;
+                break;
             }
 
             Vector3 fwd = horizVel.Normalized();
@@ -756,23 +794,43 @@ public partial class AimVisualizer : Node3D
             float dFactor = Mathf.Max(0.0f, 1.0f - effDrag * dt);
             simVelocity = new Vector3(simVelocity.X * dFactor, simVelocity.Y, simVelocity.Z * dFactor);
 
+            Vector3 prevPos = currentPos;
             currentPos += simVelocity * dt;
 
-            // Ground intersection check
             float terrainY = Disc.GetGroundHeightAt(currentPos);
-            if (currentPos.Y <= terrainY + Disc.DiscThickness * 0.5f)
+            float groundThreshold = terrainY + Disc.DiscThickness * 0.5f;
+            if (currentPos.Y <= groundThreshold)
             {
                 hitGround = true;
-                currentPos.Y = terrainY;
-                if (ShowPredictedLandingTarget && _predictedLandingTarget != null)
-                {
-                    _predictedLandingTarget.Visible = true;
-                    _predictedLandingTarget.GlobalPosition = new Vector3(currentPos.X, terrainY + 0.02f, currentPos.Z);
-                }
+                float alpha = Mathf.Clamp((prevPos.Y - groundThreshold) / Mathf.Max(0.001f, prevPos.Y - currentPos.Y), 0.0f, 1.0f);
+                Vector3 exactTouchdown = prevPos.Lerp(currentPos, alpha);
+                exactTouchdown.Y = terrainY;
+                _simPoints.Add(exactTouchdown);
+                landingPos = exactTouchdown;
+                break;
             }
+
+            _simPoints.Add(currentPos);
         }
 
-        if (!hitGround && _predictedLandingTarget != null)
+        // Build / update 3D Tube Mesh with thickness via reusable TubeMeshBuilder
+        bool generated = _tubeMeshBuilder.BuildTube(
+            _trajectoryMesh,
+            _simPoints,
+            radius: TrajectoryThickness,
+            radialSegments: TrajectoryRadialSegments,
+            startColor: TrajectoryStartColor,
+            apexColor: TrajectoryApexColor,
+            endColor: TrajectoryLandingColor
+        );
+        _trajectoryTube.Visible = generated;
+
+        if (hitGround && ShowPredictedLandingTarget)
+        {
+            _predictedLandingTarget.Visible = true;
+            _predictedLandingTarget.GlobalPosition = new Vector3(landingPos.X, landingPos.Y + 0.025f, landingPos.Z);
+        }
+        else
         {
             _predictedLandingTarget.Visible = false;
         }
