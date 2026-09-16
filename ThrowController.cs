@@ -6,9 +6,11 @@ public partial class ThrowController : Node
 
     [ExportGroup("Aim Sensitivity")]
     [Export] public float AimSensitivity { get; set; } = 0.15f;
-    [Export] public float AimWhileChargingSensitivity { get; set; } = 0.15f;
+    [Export] public float AimWhileChargingSensitivity { get; set; } = 0.0f;
     [Export] public float PowerSensitivity { get; set; } = 0.004f;
+    [Export] public float PowerStep { get; set; } = 0.05f;
     [Export] public float TiltStep { get; set; } = 5.0f;
+    [Export] public bool LockAimWhileCharging { get; set; } = true;
 
     [ExportGroup("Limits")]
     [Export] public float MinPitch { get; set; } = -80.0f;
@@ -51,7 +53,6 @@ public partial class ThrowController : Node
                 {
                     // Cancel current charge without throwing
                     _isHoldingLmb = false;
-                    Power = DefaultPower;
                     return;
                 }
 
@@ -64,6 +65,19 @@ public partial class ThrowController : Node
             if (keyEvent.Keycode == Key.R)
             {
                 ResetRequested?.Invoke();
+                return;
+            }
+
+            // W / S or Up / Down keys allow fine-tuning power independently of mouse aim
+            if (keyEvent.Keycode == Key.W || keyEvent.Keycode == Key.Up)
+            {
+                AdjustPower(PowerStep);
+                return;
+            }
+
+            if (keyEvent.Keycode == Key.S || keyEvent.Keycode == Key.Down)
+            {
+                AdjustPower(-PowerStep);
                 return;
             }
 
@@ -93,6 +107,23 @@ public partial class ThrowController : Node
                 return;
             }
 
+            // Shift + Scroll Wheel modifies power cleanly without moving mouse or zooming
+            if (mouseButton.Pressed && (mouseButton.ShiftPressed || Input.IsKeyPressed(Key.Shift)))
+            {
+                if (mouseButton.ButtonIndex == MouseButton.WheelUp)
+                {
+                    AdjustPower(PowerStep);
+                    GetViewport()?.SetInputAsHandled();
+                    return;
+                }
+                if (mouseButton.ButtonIndex == MouseButton.WheelDown)
+                {
+                    AdjustPower(-PowerStep);
+                    GetViewport()?.SetInputAsHandled();
+                    return;
+                }
+            }
+
             HandleMouseButton(mouseButton);
             return;
         }
@@ -106,6 +137,11 @@ public partial class ThrowController : Node
 
             HandleMouseMotion(mouseMotion);
         }
+    }
+
+    public void AdjustPower(float delta)
+    {
+        Power = Mathf.Clamp(Power + delta, 0.05f, 1.0f);
     }
 
     public void SetAim(float yaw, float pitch)
@@ -125,7 +161,6 @@ public partial class ThrowController : Node
                 {
                     // RMB click while charging cancels the throw safely
                     _isHoldingLmb = false;
-                    Power = DefaultPower;
                     return;
                 }
 
@@ -156,7 +191,6 @@ public partial class ThrowController : Node
             {
                 _isHoldingLmb = false;
                 RequestThrow();
-                Power = DefaultPower;
             }
         }
     }
@@ -170,13 +204,15 @@ public partial class ThrowController : Node
             return;
         }
 
-        // B. If holding LMB: Charge power with vertical pull, simultaneously aim heading with horizontal motion!
+        // B. If holding LMB: Charge power with vertical mouse pull without drifting aim
         if (_isHoldingLmb)
         {
-            // Horizontal mouse movement aims heading while charging
-            Yaw -= mouseMotion.Relative.X * AimWhileChargingSensitivity;
+            if (!LockAimWhileCharging && AimWhileChargingSensitivity > 0.001f)
+            {
+                Yaw -= mouseMotion.Relative.X * AimWhileChargingSensitivity;
+            }
 
-            // Vertical mouse movement pulls back power
+            // Vertical mouse movement pulls back / increases power
             Power += mouseMotion.Relative.Y * PowerSensitivity;
             Power = Mathf.Clamp(Power, 0.05f, 1.0f);
             return;

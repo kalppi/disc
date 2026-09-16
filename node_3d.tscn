@@ -44,7 +44,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 shape = SubResource("BoxShape3D_oyi63")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1607587959]
-transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 20, 0)
+transform = Transform3D(0.86602527, -0.2500003, 0.43301272, -0.46789628, -0.099891454, 0.87812054, -0.17627667, -0.9630787, -0.20348248, 0, 20, 0)
 shadow_enabled = true
 
 [node name="ThrowController" type="Node" parent="." unique_id=385778070 node_paths=PackedStringArray("Disc")]
